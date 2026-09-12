@@ -3,8 +3,13 @@ package com.familyfinance.crm
 import com.familyfinance.crm.domain.Account
 import com.familyfinance.crm.domain.AccountType
 import com.familyfinance.crm.domain.BaseEntity
+import com.familyfinance.crm.domain.Budget
+import com.familyfinance.crm.domain.BudgetPeriod
 import com.familyfinance.crm.domain.Category
 import com.familyfinance.crm.domain.CategoryKind
+import com.familyfinance.crm.domain.Goal
+import com.familyfinance.crm.domain.GoalStatus
+import com.familyfinance.crm.domain.GoalType
 import com.familyfinance.crm.domain.User
 import com.familyfinance.crm.domain.UserRole
 import java.math.BigDecimal
@@ -62,4 +67,36 @@ fun category(
         name = "Groceries",
         parent = parent,
         kind = kind,
+    ).withId(id)
+
+fun budget(
+    owner: User,
+    category: Category,
+    limitAmount: String = "50000",
+    alertThresholdPercent: Int? = 80,
+    id: UUID = UUID.randomUUID(),
+): Budget =
+    Budget(
+        owner = owner,
+        category = category,
+        limitAmount = BigDecimal(limitAmount),
+        period = BudgetPeriod.MONTHLY,
+        alertThresholdPercent = alertThresholdPercent,
+    ).withId(id)
+
+fun goal(
+    owner: User,
+    linkedAccount: Account,
+    targetAmount: String = "1000000",
+    status: GoalStatus = GoalStatus.ACTIVE,
+    id: UUID = UUID.randomUUID(),
+): Goal =
+    Goal(
+        owner = owner,
+        name = "Emergency fund",
+        type = GoalType.EMERGENCY_FUND,
+        targetAmount = BigDecimal(targetAmount),
+        targetDate = null,
+        linkedAccount = linkedAccount,
+        status = status,
     ).withId(id)

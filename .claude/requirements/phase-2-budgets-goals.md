@@ -1,6 +1,6 @@
 # Phase 2 — Budgets & Goals
 
-Status: spec'd, not built. See `00-architecture-and-foundations.md` for the
+Status: **built.** See `00-architecture-and-foundations.md` for the
 `User`/`Account`/`Category` entities this builds on.
 
 **Scope decision:** budgets and goals belong to a single `owner: User`,

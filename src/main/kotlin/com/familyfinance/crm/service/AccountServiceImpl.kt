@@ -5,9 +5,11 @@ import com.familyfinance.crm.domain.AccountType
 import com.familyfinance.crm.domain.User
 import com.familyfinance.crm.dto.CreateAccountRequest
 import com.familyfinance.crm.dto.UpdateAccountRequest
+import com.familyfinance.crm.exception.ConflictException
 import com.familyfinance.crm.exception.NotFoundException
 import com.familyfinance.crm.exception.invalidField
 import com.familyfinance.crm.repository.AccountRepository
+import com.familyfinance.crm.repository.GoalRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.util.UUID
@@ -16,6 +18,8 @@ import java.util.UUID
 class AccountServiceImpl(
     private val accountRepository: AccountRepository,
     private val bankService: BankService,
+    // A repository rather than GoalService, which already depends on this one.
+    private val goalRepository: GoalRepository,
 ) : AccountService {
     @Transactional(readOnly = true)
     override fun list(owner: User): List<Account> = accountRepository.findAllActiveByOwner(owner)
@@ -77,7 +81,10 @@ class AccountServiceImpl(
         owner: User,
     ) {
         val account = getOwnedBy(id, owner)
-        // TODO: block if an active Goal still points at this account (Phase 2 — no table yet).
+        // A goal measures its progress off this balance, so it blocks the delete.
+        if (goalRepository.existsForAccountId(id)) {
+            throw ConflictException("Account $id still has an active goal; delete the goal first")
+        }
         account.isDeleted = true
     }
 }

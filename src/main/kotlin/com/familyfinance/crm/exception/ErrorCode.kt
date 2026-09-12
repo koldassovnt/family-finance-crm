@@ -11,5 +11,6 @@ enum class ErrorCode {
     NOT_FOUND,
     CONFLICT,
     CURRENCY_MISMATCH,
+    DUPLICATE_BUDGET,
     INTERNAL_ERROR,
 }

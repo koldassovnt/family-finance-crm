@@ -7,6 +7,8 @@ import com.familyfinance.crm.domain.Category
 import com.familyfinance.crm.domain.Transaction
 import com.familyfinance.crm.domain.User
 import com.familyfinance.crm.repository.CategoryTotal
+import com.familyfinance.crm.service.BudgetWithUsage
+import com.familyfinance.crm.service.GoalWithProgress
 import java.util.UUID
 
 fun User.toResponse() =
@@ -50,6 +52,32 @@ fun Transaction.toResponse() =
         toAccountId = toAccount?.id,
         category = category?.toResponse(),
         note = note,
+    )
+
+fun BudgetWithUsage.toResponse() =
+    BudgetResponse(
+        id = budget.requiredId(),
+        category = budget.category.toResponse(),
+        limitAmount = budget.limitAmount,
+        period = budget.period,
+        alertThresholdPercent = budget.alertThresholdPercent,
+        month = month.toString(),
+        spent = spent,
+        remaining = remaining,
+        percentUsed = percentUsed,
+    )
+
+fun GoalWithProgress.toResponse() =
+    GoalResponse(
+        id = goal.requiredId(),
+        name = goal.name,
+        type = goal.type,
+        targetAmount = goal.targetAmount,
+        targetDate = goal.targetDate,
+        linkedAccount = goal.linkedAccount.toResponse(),
+        status = goal.status,
+        progressPercent = progressPercent,
+        achieved = achieved,
     )
 
 fun CategoryTotal.toSummary() =

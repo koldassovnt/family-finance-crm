@@ -9,6 +9,7 @@ import com.familyfinance.crm.exception.ConflictException
 import com.familyfinance.crm.exception.NotFoundException
 import com.familyfinance.crm.exception.ValidationException
 import com.familyfinance.crm.idValue
+import com.familyfinance.crm.repository.BudgetRepository
 import com.familyfinance.crm.repository.CategoryRepository
 import com.familyfinance.crm.user
 import com.familyfinance.crm.withId
@@ -22,12 +23,14 @@ import kotlin.test.assertTrue
 
 class CategoryServiceImplTest {
     private val categoryRepository = mockk<CategoryRepository>()
-    private val service = CategoryServiceImpl(categoryRepository)
+    private val budgetRepository = mockk<BudgetRepository>()
+    private val service = CategoryServiceImpl(categoryRepository, budgetRepository)
     private val owner = user()
 
     init {
         every { categoryRepository.save(any<Category>()) } answers { firstArg<Category>().withId() }
         every { categoryRepository.hasActiveChildren(any()) } returns false
+        every { budgetRepository.existsForCategoryId(any()) } returns false
     }
 
     @Test
@@ -119,6 +122,15 @@ class CategoryServiceImplTest {
         service.softDelete(subject.idValue, owner)
 
         assertTrue(subject.isDeleted)
+    }
+
+    @Test
+    fun `blocks deleting a category that an active budget references`() {
+        val subject = category(owner)
+        every { categoryRepository.findActiveById(subject.idValue) } returns subject
+        every { budgetRepository.existsForCategoryId(subject.idValue) } returns true
+
+        assertThrows<ConflictException> { service.softDelete(subject.idValue, owner) }
     }
 
     @Test

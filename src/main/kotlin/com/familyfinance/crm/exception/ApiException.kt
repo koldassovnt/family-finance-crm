@@ -34,6 +34,11 @@ class CurrencyMismatchException(
     message: String,
 ) : ApiException(ErrorCode.CURRENCY_MISMATCH, HttpStatus.BAD_REQUEST, message)
 
+/** One active budget per category per person — see `phase-2-budgets-goals.md`. */
+class DuplicateBudgetException(
+    message: String,
+) : ApiException(ErrorCode.DUPLICATE_BUDGET, HttpStatus.CONFLICT, message)
+
 class ValidationException(
     message: String,
     fieldErrors: Map<String, String> = emptyMap(),

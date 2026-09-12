@@ -7,6 +7,7 @@ import com.familyfinance.crm.dto.UpdateCategoryRequest
 import com.familyfinance.crm.exception.ConflictException
 import com.familyfinance.crm.exception.NotFoundException
 import com.familyfinance.crm.exception.invalidField
+import com.familyfinance.crm.repository.BudgetRepository
 import com.familyfinance.crm.repository.CategoryRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -15,6 +16,9 @@ import java.util.UUID
 @Service
 class CategoryServiceImpl(
     private val categoryRepository: CategoryRepository,
+    // A repository rather than BudgetService: BudgetService already depends on
+    // this service, and a cycle between the two would not start.
+    private val budgetRepository: BudgetRepository,
 ) : CategoryService {
     @Transactional(readOnly = true)
     override fun list(owner: User): List<Category> = categoryRepository.findAllActiveByOwner(owner)
@@ -68,7 +72,10 @@ class CategoryServiceImpl(
         owner: User,
     ) {
         val category = getOwnedBy(id, owner)
-        // TODO: block if referenced by an active Budget (Phase 2 — no table yet).
+        // A live budget is current config, not history, so it blocks the delete.
+        if (budgetRepository.existsForCategoryId(id)) {
+            throw ConflictException("Category $id still has an active budget; delete the budget first")
+        }
         if (categoryRepository.hasActiveChildren(id)) {
             throw ConflictException("Category $id still has sub-categories; delete or re-parent them first")
         }

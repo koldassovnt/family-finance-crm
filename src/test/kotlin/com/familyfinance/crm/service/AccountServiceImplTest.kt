@@ -6,10 +6,12 @@ import com.familyfinance.crm.domain.AccountType
 import com.familyfinance.crm.domain.Bank
 import com.familyfinance.crm.dto.CreateAccountRequest
 import com.familyfinance.crm.dto.UpdateAccountRequest
+import com.familyfinance.crm.exception.ConflictException
 import com.familyfinance.crm.exception.NotFoundException
 import com.familyfinance.crm.exception.ValidationException
 import com.familyfinance.crm.idValue
 import com.familyfinance.crm.repository.AccountRepository
+import com.familyfinance.crm.repository.GoalRepository
 import com.familyfinance.crm.user
 import com.familyfinance.crm.withId
 import io.mockk.every
@@ -26,11 +28,13 @@ import kotlin.test.assertTrue
 class AccountServiceImplTest {
     private val accountRepository = mockk<AccountRepository>()
     private val bankService = mockk<BankService>()
-    private val service = AccountServiceImpl(accountRepository, bankService)
+    private val goalRepository = mockk<GoalRepository>()
+    private val service = AccountServiceImpl(accountRepository, bankService, goalRepository)
     private val owner = user()
 
     init {
         every { accountRepository.save(any<Account>()) } answers { firstArg<Account>().withId() }
+        every { goalRepository.existsForAccountId(any()) } returns false
     }
 
     @Test
@@ -95,6 +99,15 @@ class AccountServiceImplTest {
 
         assertEquals(bank, updated.bank)
         assertEquals("Renamed", updated.name)
+    }
+
+    @Test
+    fun `blocks deleting an account that an active goal points at`() {
+        val subject = account(owner)
+        every { accountRepository.findActiveById(subject.idValue) } returns subject
+        every { goalRepository.existsForAccountId(subject.idValue) } returns true
+
+        assertThrows<ConflictException> { service.softDelete(subject.idValue, owner) }
     }
 
     @Test

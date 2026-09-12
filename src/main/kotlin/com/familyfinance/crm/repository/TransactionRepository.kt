@@ -74,6 +74,27 @@ interface TransactionRepository : JpaRepository<Transaction, UUID> {
         to: LocalDate,
     ): BigDecimal
 
+    /**
+     * The same aggregation as [sumByCategory], narrowed to one category —
+     * this is what a budget's usage is computed from.
+     */
+    @Query(
+        """
+        SELECT coalesce(sum(t.amount), 0) FROM Transaction t
+        WHERE t.account.owner = :owner
+          AND t.type = :type
+          AND t.category.id = :categoryId
+          AND t.occurredOn BETWEEN :from AND :to
+        """,
+    )
+    fun sumByTypeAndCategory(
+        owner: User,
+        type: TransactionType,
+        categoryId: UUID,
+        from: LocalDate,
+        to: LocalDate,
+    ): BigDecimal
+
     @Query(
         """
         SELECT c.id AS categoryId, c.name AS categoryName, sum(t.amount) AS total
