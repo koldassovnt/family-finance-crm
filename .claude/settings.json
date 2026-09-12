@@ -1,0 +1,38 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(./gradlew test*)",
+      "Bash(./gradlew build*)",
+      "Bash(./gradlew clean*)",
+      "Bash(./gradlew check*)",
+      "Bash(./gradlew compileJava*)",
+      "Bash(./gradlew compileTestJava*)",
+      "Bash(./gradlew jacocoTestReport*)",
+      "Bash(./gradlew tasks*)",
+      "Bash(./gradlew dependencies*)",
+      "Bash(./gradlew --offline*)",
+      "Bash(./gradlew --stop)",
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git show*)",
+      "Bash(git blame*)",
+      "Bash(git branch)",
+      "Bash(git fetch*)"
+    ],
+    "deny": [
+      "Bash(./gradlew publish*)",
+      "Bash(docker compose down -v*)",
+      "Bash(docker volume rm*)",
+      "Bash(docker-compose down -v*)",
+      "Bash(docker-volume rm*)",
+      "Bash(git reset --hard*)",
+      "Bash(git push --force*)",
+      "Bash(git clean -fd*)"
+    ],
+    "ask": [
+      "Bash(git commit*)",
+      "Bash(git push*)"
+    ]
+  }
+}

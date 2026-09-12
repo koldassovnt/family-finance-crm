@@ -1,0 +1,22 @@
+# Local Postgres for development. Not wired into the Gradle build — start it
+# yourself with `docker compose up -d` before running the app.
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: family-finance-postgres
+    environment:
+      POSTGRES_DB: family_finance
+      POSTGRES_USER: family_finance
+      POSTGRES_PASSWORD: family_finance
+    ports:
+      - "5432:5432"
+    volumes:
+      - family-finance-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U family_finance -d family_finance"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  family-finance-pgdata:
