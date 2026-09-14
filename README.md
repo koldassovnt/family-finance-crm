@@ -1,7 +1,7 @@
 # Family Finance CRM
 
 Kotlin + Spring Boot + PostgreSQL backend for a household ledger: accounts,
-categories, transactions, budgets and goals, with bills to follow.
+categories and transactions, plus budgets, goals and bills.
 
 ## Running it
 
@@ -36,7 +36,7 @@ phase doc assumes it. Companion doc outside this folder: `frontend-requirements.
 | `.claude/requirements/00-architecture-and-foundations.md` | shared, always current |
 | `.claude/requirements/phase-0-1-foundation-ledger.md`     | built |
 | `.claude/requirements/phase-2-budgets-goals.md`           | built |
-| `.claude/requirements/phase-4-bills-calendar.md`          | spec'd, not built |
+| `.claude/requirements/phase-4-bills-calendar.md`          | built |
 
 **Current scope ends at Phase 4.** That's the whole build for now:
 foundation, ledger, budgets, goals, and bills.
@@ -62,5 +62,6 @@ endpoints under `/api/v1/`; balances corrected via an `ADJUSTMENT`
 transaction rather than a direct edit; no pagination, date-range bounded
 instead.
 
-Build order: Phases 0/1 and 2 are done. Phase 4 is next, then 5, then 6
-(needs 5).
+**Phases 0/1, 2 and 4 are all built — the whole current scope is done.**
+Phases 5 and 6 remain out of scope; revisit them only once this is genuinely
+in daily use.

@@ -3,6 +3,7 @@ package com.familyfinance.crm
 import com.familyfinance.crm.domain.Account
 import com.familyfinance.crm.domain.AccountType
 import com.familyfinance.crm.domain.BaseEntity
+import com.familyfinance.crm.domain.Bill
 import com.familyfinance.crm.domain.Budget
 import com.familyfinance.crm.domain.BudgetPeriod
 import com.familyfinance.crm.domain.BudgetVersion
@@ -115,4 +116,23 @@ fun goal(
         targetDate = null,
         linkedAccount = linkedAccount,
         status = status,
+    ).withId(id)
+
+fun bill(
+    owner: User,
+    name: String = "Electricity",
+    amount: String = "12000",
+    dueDate: LocalDate = LocalDate.of(2026, 9, 15),
+    isPaid: Boolean = false,
+    batchId: UUID? = null,
+    id: UUID = UUID.randomUUID(),
+): Bill =
+    Bill(
+        owner = owner,
+        name = name,
+        amount = BigDecimal(amount),
+        currency = "KZT",
+        dueDate = dueDate,
+        isPaid = isPaid,
+        batchId = batchId,
     ).withId(id)

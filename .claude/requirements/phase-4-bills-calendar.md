@@ -1,6 +1,6 @@
 # Phase 4 — Bills & Due-Date Calendar
 
-Status: spec'd, not built. See `00-architecture-and-foundations.md` for the
+Status: **built.** See `00-architecture-and-foundations.md` for the
 `User` entity and the soft-delete convention this builds on.
 
 ## Scope
@@ -24,9 +24,12 @@ for how categories work).
 - `isPaid: Boolean` (default `false`)
 - `batchId: UUID?` — nullable; shared by every row created in one batch call, null for individually-created bills
 - `isDeleted: Boolean` (default `false`) — see `00-`'s soft-delete rule
-- `createdAt`
+- `createdAt`, `updatedAt`
 
-That's the whole entity. Overdue isn't a stored status — it's derived
+That's the whole entity. Unlike `Transaction`, a `Bill` carries no
+`exchangeRate`/`amountKzt`: nothing sums bills, so there is no total that could
+mix currencies. If a "total due this month" is ever wanted, it needs the same
+treatment `00-` gives transactions. Overdue isn't a stored status — it's derived
 (`!isPaid && dueDate < today`), so it can't go stale.
 
 **Recurring bills — batch create, not a recurrence engine.** There's no
@@ -67,12 +70,18 @@ the complexity being avoided here.
 
 | Method | Path                | Purpose                                                     |
 |--------|----------------------|--------------------------------------------------------------|
-| GET    | `/api/v1/bills`         | list the caller's bills; `month=2026-09` filters by due date |
+| GET    | `/api/v1/bills`         | list the caller's bills, earliest due date first; `month=2026-09` filters by due date, omit it for all |
 | POST   | `/api/v1/bills`         | create one bill                                             |
 | POST   | `/api/v1/bills/batch`   | create many from a pattern (see above); returns the created rows |
-| PATCH  | `/api/v1/bills/{id}`    | update name/amount/date, or set `isPaid`                    |
+| PATCH  | `/api/v1/bills/{id}`    | update name/amount/currency/date, or set `isPaid`           |
 | DELETE | `/api/v1/bills/{id}`    | soft delete one bill                                        |
 | DELETE | `/api/v1/bills/batch/{batchId}` | soft delete every bill in a batch                   |
 
 The calendar view is a frontend concern — the backend just serves the month's
 bills and lets the UI lay them out.
+
+⚠ **A month view hides overdue bills from earlier months.** `?month=2026-09`
+returns only bills *due* in September, so an unpaid August bill — arguably the
+thing most worth seeing — is absent. Listing without `month` returns everything
+including those, which is the workaround today. A `?unpaid=true` filter would
+be the real fix if the calendar becomes the main way these are read.

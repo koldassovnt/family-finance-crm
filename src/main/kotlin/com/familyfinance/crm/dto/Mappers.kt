@@ -7,6 +7,7 @@ import com.familyfinance.crm.domain.Category
 import com.familyfinance.crm.domain.Transaction
 import com.familyfinance.crm.domain.User
 import com.familyfinance.crm.repository.CategoryTotal
+import com.familyfinance.crm.service.BillWithStatus
 import com.familyfinance.crm.service.BudgetWithUsage
 import com.familyfinance.crm.service.GoalWithProgress
 import java.time.YearMonth
@@ -83,6 +84,18 @@ fun GoalWithProgress.toResponse() =
         status = goal.status,
         progressPercent = progressPercent,
         achieved = achieved,
+    )
+
+fun BillWithStatus.toResponse() =
+    BillResponse(
+        id = bill.requiredId(),
+        name = bill.name,
+        amount = bill.amount,
+        currency = bill.currency,
+        dueDate = bill.dueDate,
+        isPaid = bill.isPaid,
+        overdue = overdue,
+        batchId = bill.batchId,
     )
 
 fun CategoryTotal.toSummary() =
