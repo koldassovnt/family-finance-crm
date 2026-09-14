@@ -40,7 +40,8 @@ class BudgetController(
     @Operation(
         summary = "List your budgets with a month's usage",
         description =
-            "Defaults to the current month in Asia/Almaty; pass `month=2026-09` for any other. " +
+            "Defaults to the current month in Asia/Almaty; pass `month=2026-09` for any past month — " +
+                "a future one is rejected, since its usage could only ever be zero. " +
                 "Each budget reports the limit that actually applied that month, and usage summed " +
                 "from that month's EXPENSE transactions in KZT, rolled up from any sub-categories. " +
                 "TRANSFER and ADJUSTMENT are excluded, and `percentUsed` is not capped at 100. " +

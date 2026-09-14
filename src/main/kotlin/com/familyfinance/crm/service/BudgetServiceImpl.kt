@@ -36,6 +36,11 @@ class BudgetServiceImpl(
         owner: User,
         month: YearMonth,
     ): List<BudgetWithUsage> {
+        // A future month would report every budget at 0% with its full limit
+        // remaining — indistinguishable from a real month with no spending.
+        if (month.isAfter(currentMonth())) {
+            throw invalidField("month", "must not be in the future")
+        }
         val versions = budgetVersionRepository.findInForce(owner, month.atDay(1))
         if (versions.isEmpty()) return emptyList()
         val range = monthRange(month)
@@ -108,8 +113,14 @@ class BudgetServiceImpl(
                 request.alertThresholdPercent.orElse(null)?.also(::validateThreshold)
             }
 
+        // A version boundary records a change of *limit*. The alert threshold is
+        // a display cue, and an empty PATCH changes nothing at all — neither
+        // should split the history. compareTo, not ==, so 50000 and 50000.0000
+        // read as the same limit rather than as a change.
+        val limitUnchanged = limitAmount.compareTo(open.limitAmount) == 0
+
         val effective =
-            if (open.effectiveFromMonth == month.atDay(1)) {
+            if (limitUnchanged || open.effectiveFromMonth == month.atDay(1)) {
                 // Still the month this version started in — correct it in place
                 // rather than leaving two versions for one month.
                 open.limitAmount = limitAmount

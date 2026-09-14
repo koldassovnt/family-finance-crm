@@ -195,6 +195,64 @@ class BudgetServiceImplTest {
     }
 
     @Test
+    fun `a threshold-only edit does not split the limit history`() {
+        val subject = budget(owner, groceries)
+        val version = budgetVersion(subject, effectiveFromMonth = YearMonth.of(2026, 7))
+        every { budgetRepository.findActiveById(subject.idValue) } returns subject
+        every { budgetVersionRepository.findOpenVersion(subject.idValue) } returns version
+
+        val updated =
+            service.update(
+                subject.idValue,
+                owner,
+                UpdateBudgetRequest(alertThresholdPercent = Optional.of(90)),
+            )
+
+        // The limit never changed, so July's version stays open rather than
+        // being closed and reopened with an identical limit.
+        assertEquals(version.idValue, updated.version.idValue)
+        assertEquals(YearMonth.of(2026, 7).atDay(1), updated.version.effectiveFromMonth)
+        assertNull(updated.version.effectiveToMonth)
+        assertEquals(90, updated.version.alertThresholdPercent)
+    }
+
+    @Test
+    fun `an empty edit does not split the limit history`() {
+        val subject = budget(owner, groceries)
+        val version = budgetVersion(subject, effectiveFromMonth = YearMonth.of(2026, 7))
+        every { budgetRepository.findActiveById(subject.idValue) } returns subject
+        every { budgetVersionRepository.findOpenVersion(subject.idValue) } returns version
+
+        val updated = service.update(subject.idValue, owner, UpdateBudgetRequest())
+
+        assertEquals(version.idValue, updated.version.idValue)
+        assertNull(updated.version.effectiveToMonth)
+    }
+
+    @Test
+    fun `resending the same limit at a different scale is not a change`() {
+        val subject = budget(owner, groceries)
+        val version = budgetVersion(subject, effectiveFromMonth = YearMonth.of(2026, 7))
+        every { budgetRepository.findActiveById(subject.idValue) } returns subject
+        every { budgetVersionRepository.findOpenVersion(subject.idValue) } returns version
+
+        // The database round-trips 50000 as 50000.0000, which is not `equals`.
+        val updated =
+            service.update(subject.idValue, owner, UpdateBudgetRequest(limitAmount = BigDecimal("50000.0000")))
+
+        assertEquals(version.idValue, updated.version.idValue)
+        assertNull(updated.version.effectiveToMonth)
+    }
+
+    @Test
+    fun `rejects a month in the future, whose usage could only be zero`() {
+        val error =
+            assertThrows<ValidationException> { service.list(owner, YearMonth.of(2030, 1)) }
+
+        assertEquals(setOf("month"), error.fieldErrors.keys)
+    }
+
+    @Test
     fun `a new version carries forward whatever the request left out`() {
         val subject = budget(owner, groceries)
         val version =

@@ -73,7 +73,7 @@ the complexity being avoided here.
 | GET    | `/api/v1/bills`         | list the caller's bills, earliest due date first; `month=2026-09` filters by due date and `unpaid=true` by outstanding status, independently or together, omit both for all |
 | POST   | `/api/v1/bills`         | create one bill                                             |
 | POST   | `/api/v1/bills/batch`   | create many from a pattern (see above); returns the created rows |
-| PATCH  | `/api/v1/bills/{id}`    | update name/amount/currency/date, or set `isPaid`           |
+| PATCH  | `/api/v1/bills/{id}`    | update name/amount/currency/date, or set `isPaid`. Changing `currency` requires restating `amount`, since nothing converts it |
 | DELETE | `/api/v1/bills/{id}`    | soft delete one bill                                        |
 | DELETE | `/api/v1/bills/batch/{batchId}` | soft delete every bill in a batch                   |
 

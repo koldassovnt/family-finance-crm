@@ -57,7 +57,7 @@ class GoalServiceImpl(
         request.name?.let { goal.name = it.trim() }
         request.targetAmount?.let { goal.targetAmount = requirePositiveTarget(it) }
         request.targetDate?.let { goal.targetDate = it.orElse(null) }
-        request.status?.let { goal.status = it }
+        request.status?.let { goal.status = requireReactivatable(it, goal) }
         return withProgress(goal)
     }
 
@@ -67,6 +67,25 @@ class GoalServiceImpl(
         owner: User,
     ) {
         getOwnedBy(id, owner).isDeleted = true
+    }
+
+    /**
+     * Only `ACTIVE` goals block deleting their linked account, so archiving one
+     * frees the account — which means reactivating it afterwards would leave an
+     * active goal measuring progress off a deleted account's frozen balance,
+     * invisible in `GET /accounts` and unreachable by any transaction.
+     */
+    private fun requireReactivatable(
+        status: GoalStatus,
+        goal: Goal,
+    ): GoalStatus {
+        if (status == GoalStatus.ACTIVE && goal.linkedAccount.isDeleted) {
+            throw invalidField(
+                "status",
+                "cannot be ACTIVE: the linked account has been deleted",
+            )
+        }
+        return status
     }
 
     private fun getOwnedBy(

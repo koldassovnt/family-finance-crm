@@ -1,9 +1,15 @@
 package com.familyfinance.crm.security
 
+import com.familyfinance.crm.exception.ErrorCode
+import com.familyfinance.crm.exception.ErrorResponse
 import com.familyfinance.crm.repository.UserRepository
+import com.fasterxml.jackson.databind.ObjectMapper
 import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
+import org.slf4j.LoggerFactory
+import org.springframework.dao.DataAccessException
+import org.springframework.http.HttpStatus
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
 import org.springframework.security.core.authority.SimpleGrantedAuthority
 import org.springframework.security.core.context.SecurityContextHolder
@@ -16,17 +22,35 @@ import java.time.temporal.ChronoUnit
 class JwtAuthenticationFilter(
     private val jwtService: JwtService,
     private val userRepository: UserRepository,
+    private val objectMapper: ObjectMapper,
 ) : OncePerRequestFilter() {
+    private val log = LoggerFactory.getLogger(javaClass)
+
     override fun doFilterInternal(
         request: HttpServletRequest,
         response: HttpServletResponse,
         filterChain: FilterChain,
     ) {
         if (SecurityContextHolder.getContext().authentication == null) {
-            bearerToken(request)
-                ?.let(jwtService::parse)
-                ?.takeIf(::stillValid)
-                ?.let { principal -> authenticate(principal, request) }
+            val principal = bearerToken(request)?.let(jwtService::parse)
+            if (principal != null) {
+                val valid =
+                    try {
+                        stillValid(principal)
+                    } catch (ex: DataAccessException) {
+                        // This filter runs outside DispatcherServlet, so an
+                        // escaping exception would become a container error page
+                        // rather than the JSON shape every client expects.
+                        log.error("Could not check token validity", ex)
+                        response.writeError(
+                            objectMapper,
+                            HttpStatus.SERVICE_UNAVAILABLE,
+                            ErrorResponse(ErrorCode.INTERNAL_ERROR, "Service temporarily unavailable"),
+                        )
+                        return
+                    }
+                if (valid) authenticate(principal, request)
+            }
         }
         filterChain.doFilter(request, response)
     }

@@ -26,13 +26,14 @@ month always reports the limit that actually applied then rather than today's.
 - `alertThresholdPercent: Int?` — nullable, e.g. `80`. **Display cue only** — there is no alerting job, no notification, no delivery mechanism. The API returns it alongside computed usage so the UI can style the progress bar (amber past the threshold, red past 100%). Nothing server-side reacts to it.
 - `effectiveFromMonth: LocalDate`, `effectiveToMonth: LocalDate?` — both the **first day** of a month; `effectiveToMonth` is **inclusive** and `null` means still in force
 - Constraint: at most one open version per budget (partial unique index on `effective_to_month IS NULL`)
+- A version boundary records a change of **limit** and nothing else: editing only the alert threshold (a display cue), or resending the same limit, updates the open version in place rather than splitting the history. Compare limits with `compareTo`, since the database round-trips `50000` as `50000.0000`.
 - **Creating** a budget opens a version from the current month. **Changing** a limit closes the open version at the end of *last* month and opens a new one from this month — unless the open version already started this month, in which case it is corrected in place rather than leaving two versions for one month. **Deleting** closes it at the end of last month (or drops the version entirely if it started this month and so never applied), and marks the budget deleted.
   - ⚠ Hibernate orders inserts before updates within a flush, so closing the old version must be flushed *before* inserting the new one or the partial unique index trips.
 
 ## Usage
 - Computed on read, never stored: sum of that owner's `EXPENSE` transactions for the month in question (`Asia/Almaty`; `TRANSFER` and `ADJUSTMENT` excluded — see `00-`), summing **`amountKzt`** so mixed currencies are never added together
 - **Rolls up sub-categories to arbitrary depth** — a budget on *Food* includes spending filed under *Food → Fruit*. A parent and a child may both have budgets, and the child's spending counts toward both: the parent is a cap over the group
-- `GET /api/v1/budgets?month=2026-09` reports any month, defaulting to the current one. A budget that did not exist that month is simply absent
+- `GET /api/v1/budgets?month=2026-09` reports any past month, defaulting to the current one. A budget that did not exist that month is simply absent. **A future month is rejected** — its usage could only ever be zero, which would read exactly like a real month with no spending
 - `percentUsed` is **not** capped at 100, and `remaining` goes negative — overspend is information to show, not hide
 - Soft-deleting a `Category` whose budget still has an **open** version must be blocked — a **service-layer check**, not an FK restrict (an FK can't see `is_deleted` or an effective range). A closed version is history and does not block.
 
@@ -48,6 +49,7 @@ month always reports the limit that actually applied then rather than today's.
 - `targetAmount` is denominated in the **linked account's currency** — converting a balance would need a current rate, which `00-` deliberately doesn't store
 - `isDeleted: Boolean` (default `false`) — see `00-`'s soft-delete rule
 - `createdAt`
+- A goal may not be set back to `ACTIVE` once its linked account is soft-deleted — archiving is what frees the account, so reactivating afterwards would bind an active goal to a frozen balance that no transaction can move and no account list shows
 - Soft-deleting an `Account` that an **`ACTIVE`** `Goal` references must be blocked — service-layer check, same as the category/budget rule above. Abandoned and archived goals are kept for the record and deliberately do not block: giving up on a goal shouldn't force you to delete it before closing the account
 
 ## Progress — tied to the linked account's balance, computed on read, not stored

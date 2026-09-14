@@ -48,7 +48,12 @@ class JsonAccessDeniedHandler(
     )
 }
 
-private fun HttpServletResponse.writeError(
+/**
+ * Shared with [JwtAuthenticationFilter]: a filter runs outside
+ * `DispatcherServlet`, so `GlobalExceptionHandler` never sees what it throws
+ * and anything escaping becomes a container error page.
+ */
+internal fun HttpServletResponse.writeError(
     objectMapper: ObjectMapper,
     httpStatus: HttpStatus,
     body: ErrorResponse,

@@ -108,6 +108,36 @@ class GoalServiceImplTest {
     }
 
     @Test
+    fun `refuses to reactivate a goal whose linked account has been deleted`() {
+        val closed = account(owner)
+        closed.isDeleted = true
+        val subject = goal(owner, closed, status = GoalStatus.ARCHIVED)
+        every { goalRepository.findDetailedById(subject.idValue) } returns subject
+
+        // Archiving frees the account for deletion, so reactivating afterwards
+        // would bind an ACTIVE goal to a balance nothing can move.
+        val error =
+            assertThrows<ValidationException> {
+                service.update(subject.idValue, owner, UpdateGoalRequest(status = GoalStatus.ACTIVE))
+            }
+
+        assertEquals(setOf("status"), error.fieldErrors.keys)
+        assertEquals(GoalStatus.ARCHIVED, subject.status)
+    }
+
+    @Test
+    fun `still allows archiving a goal whose linked account has been deleted`() {
+        val closed = account(owner)
+        closed.isDeleted = true
+        val subject = goal(owner, closed, status = GoalStatus.ABANDONED)
+        every { goalRepository.findDetailedById(subject.idValue) } returns subject
+
+        val updated = service.update(subject.idValue, owner, UpdateGoalRequest(status = GoalStatus.ARCHIVED))
+
+        assertEquals(GoalStatus.ARCHIVED, updated.goal.status)
+    }
+
+    @Test
     fun `rejects a linked account owned by someone else`() {
         val theirs = account(user(email = "other@example.com"))
         every { accountService.getOwnedBy(theirs.idValue, owner) } throws NotFoundException("nope")

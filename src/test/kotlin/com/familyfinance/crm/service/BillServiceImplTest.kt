@@ -222,6 +222,47 @@ class BillServiceImplTest {
     }
 
     @Test
+    fun `refuses to change a bill's currency without restating the amount`() {
+        val subject = bill(owner, amount = "12000")
+        every { billRepository.findById(subject.idValue) } returns Optional.of(subject)
+
+        // 12000 KZT silently becoming 12000 USD is a ~480x rewrite.
+        val error =
+            assertThrows<ValidationException> {
+                service.update(subject.idValue, owner, UpdateBillRequest(currency = "USD"))
+            }
+
+        assertEquals(setOf("amount"), error.fieldErrors.keys)
+        assertEquals("KZT", subject.currency)
+    }
+
+    @Test
+    fun `allows a currency change when the amount is restated with it`() {
+        val subject = bill(owner, amount = "12000")
+        every { billRepository.findById(subject.idValue) } returns Optional.of(subject)
+
+        val updated =
+            service.update(
+                subject.idValue,
+                owner,
+                UpdateBillRequest(currency = "USD", amount = BigDecimal("25")),
+            )
+
+        assertEquals("USD", updated.bill.currency)
+        assertEquals(BigDecimal("25"), updated.bill.amount)
+    }
+
+    @Test
+    fun `restating the same currency alone is not a change`() {
+        val subject = bill(owner, amount = "12000")
+        every { billRepository.findById(subject.idValue) } returns Optional.of(subject)
+
+        val updated = service.update(subject.idValue, owner, UpdateBillRequest(currency = "kzt"))
+
+        assertEquals("KZT", updated.bill.currency)
+    }
+
+    @Test
     fun `deleting a batch soft-deletes every row in it`() {
         val batchId = UUID.randomUUID()
         val rows = listOf(bill(owner, batchId = batchId), bill(owner, batchId = batchId))

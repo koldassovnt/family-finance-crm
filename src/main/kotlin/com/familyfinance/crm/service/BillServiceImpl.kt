@@ -138,8 +138,16 @@ class BillServiceImpl(
     ): BillWithStatus {
         val bill = getOwnedBy(id, owner)
         request.name?.let { bill.name = it.trim() }
+        request.currency?.let { currency ->
+            // Changing only the currency would silently reinterpret the amount —
+            // 12000 KZT becoming 12000 USD is a ~480x rewrite with no conversion.
+            val normalized = normalizeCurrency(currency)
+            if (normalized != bill.currency && request.amount == null) {
+                throw invalidField("amount", "is required when changing the currency")
+            }
+            bill.currency = normalized
+        }
         request.amount?.let { bill.amount = requirePositiveAmount(it) }
-        request.currency?.let { bill.currency = normalizeCurrency(it) }
         request.dueDate?.let { bill.dueDate = it }
         // Editing one row never touches its siblings, and it keeps its batchId.
         request.isPaid?.let { bill.isPaid = it }
