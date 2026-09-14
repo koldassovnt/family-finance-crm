@@ -15,10 +15,19 @@ data class BillWithStatus(
 )
 
 interface BillService {
-    /** All of the caller's bills, or only those due in [month] when given. */
+    /**
+     * The caller's bills, narrowed by either filter or both. [month] matches the
+     * due date; [unpaid] is `true` for outstanding bills and `false` for settled
+     * ones. Both null returns everything.
+     *
+     * The two are independent: `month` alone is the calendar grid, and `unpaid`
+     * alone is what's still owed — including bills that fell due in an earlier
+     * month, which a month view by definition cannot show.
+     */
     fun list(
         owner: User,
         month: YearMonth?,
+        unpaid: Boolean?,
     ): List<BillWithStatus>
 
     fun create(

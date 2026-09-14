@@ -27,17 +27,37 @@ class BillServiceImpl(
     override fun list(
         owner: User,
         month: YearMonth?,
+        unpaid: Boolean?,
     ): List<BillWithStatus> {
+        val range = month?.let { monthRange(it) }
+        // `unpaid = true` means isPaid = false, so the flag inverts.
+        val isPaid = unpaid?.not()
+        // Nested rather than a flat `when`, so both nullables narrow by branch.
         val bills =
-            if (month == null) {
-                billRepository.findAllByOwnerOrderByDueDateAscNameAsc(owner)
+            if (isPaid == null) {
+                if (range == null) {
+                    billRepository.findAllByOwnerOrderByDueDateAscNameAsc(owner)
+                } else {
+                    billRepository.findAllByOwnerAndDueDateBetweenOrderByDueDateAscNameAsc(
+                        owner = owner,
+                        from = range.from,
+                        to = range.to,
+                    )
+                }
             } else {
-                val range = monthRange(month)
-                billRepository.findAllByOwnerAndDueDateBetweenOrderByDueDateAscNameAsc(
-                    owner = owner,
-                    from = range.from,
-                    to = range.to,
-                )
+                if (range == null) {
+                    billRepository.findAllByOwnerAndIsPaidOrderByDueDateAscNameAsc(
+                        owner = owner,
+                        isPaid = isPaid,
+                    )
+                } else {
+                    billRepository.findAllByOwnerAndIsPaidAndDueDateBetweenOrderByDueDateAscNameAsc(
+                        owner = owner,
+                        isPaid = isPaid,
+                        from = range.from,
+                        to = range.to,
+                    )
+                }
             }
         return bills.map(::withStatus)
     }

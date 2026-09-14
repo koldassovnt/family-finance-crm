@@ -18,6 +18,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import java.math.BigDecimal
 import java.time.LocalDate
+import java.time.YearMonth
 import java.util.Optional
 import java.util.UUID
 import kotlin.test.assertEquals
@@ -43,7 +44,7 @@ class BillServiceImplTest {
         val subject = bill(owner, dueDate = today.minusDays(1))
         every { billRepository.findAllByOwnerOrderByDueDateAscNameAsc(owner) } returns listOf(subject)
 
-        assertTrue(service.list(owner, month = null).single().overdue)
+        assertTrue(service.list(owner, month = null, unpaid = null).single().overdue)
     }
 
     @Test
@@ -51,7 +52,7 @@ class BillServiceImplTest {
         val subject = bill(owner, dueDate = today.minusDays(1), isPaid = true)
         every { billRepository.findAllByOwnerOrderByDueDateAscNameAsc(owner) } returns listOf(subject)
 
-        assertFalse(service.list(owner, month = null).single().overdue)
+        assertFalse(service.list(owner, month = null, unpaid = null).single().overdue)
     }
 
     @Test
@@ -59,7 +60,7 @@ class BillServiceImplTest {
         val subject = bill(owner, dueDate = today)
         every { billRepository.findAllByOwnerOrderByDueDateAscNameAsc(owner) } returns listOf(subject)
 
-        assertFalse(service.list(owner, month = null).single().overdue)
+        assertFalse(service.list(owner, month = null, unpaid = null).single().overdue)
     }
 
     @Test
@@ -79,6 +80,60 @@ class BillServiceImplTest {
         assertThrows<ValidationException> {
             service.create(owner, CreateBillRequest(name = "Free", amount = BigDecimal.ZERO, dueDate = today))
         }
+    }
+
+    @Test
+    fun `unpaid true returns outstanding bills regardless of month`() {
+        val overdue = bill(owner, name = "Electricity", dueDate = LocalDate.of(2026, 8, 25))
+        val upcoming = bill(owner, name = "Netflix", dueDate = LocalDate.of(2026, 9, 28))
+        every { billRepository.findAllByOwnerAndIsPaidOrderByDueDateAscNameAsc(owner, false) } returns
+            listOf(overdue, upcoming)
+
+        val listed = service.list(owner, month = null, unpaid = true)
+
+        // The August bill is exactly what a September month view cannot show.
+        assertEquals(listOf("Electricity", "Netflix"), listed.map { it.bill.name })
+        assertTrue(listed.first().overdue)
+    }
+
+    @Test
+    fun `unpaid false returns settled bills`() {
+        val paid = bill(owner, isPaid = true)
+        every { billRepository.findAllByOwnerAndIsPaidOrderByDueDateAscNameAsc(owner, true) } returns listOf(paid)
+
+        assertEquals(1, service.list(owner, month = null, unpaid = false).size)
+    }
+
+    @Test
+    fun `month and unpaid combine into one narrower filter`() {
+        val subject = bill(owner, dueDate = LocalDate.of(2026, 9, 15))
+        every {
+            billRepository.findAllByOwnerAndIsPaidAndDueDateBetweenOrderByDueDateAscNameAsc(
+                owner,
+                false,
+                LocalDate.of(2026, 9, 1),
+                LocalDate.of(2026, 9, 30),
+            )
+        } returns listOf(subject)
+
+        val listed = service.list(owner, month = YearMonth.of(2026, 9), unpaid = true)
+
+        assertEquals(1, listed.size)
+    }
+
+    @Test
+    fun `month alone does not filter on paid status`() {
+        val paid = bill(owner, dueDate = LocalDate.of(2026, 9, 15), isPaid = true)
+        val unpaid = bill(owner, dueDate = LocalDate.of(2026, 9, 20))
+        every {
+            billRepository.findAllByOwnerAndDueDateBetweenOrderByDueDateAscNameAsc(
+                owner,
+                LocalDate.of(2026, 9, 1),
+                LocalDate.of(2026, 9, 30),
+            )
+        } returns listOf(paid, unpaid)
+
+        assertEquals(2, service.list(owner, month = YearMonth.of(2026, 9), unpaid = null).size)
     }
 
     @Test

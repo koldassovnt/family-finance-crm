@@ -38,16 +38,23 @@ class BillController(
     @Operation(
         summary = "List your bills",
         description =
-            "Pass `month=2026-09` to filter by due date; omit it for every bill. " +
-                "`overdue` is derived from today in Asia/Almaty, so it is never stale.",
+            "Two independent filters, combinable. `month=2026-09` matches the due date — the calendar " +
+                "grid. `unpaid=true` returns everything still owed, including bills that fell due in an " +
+                "earlier month, which a month view by definition cannot show; `unpaid=false` returns " +
+                "settled ones. Omit both for every bill. `overdue` is derived from today in Asia/Almaty, " +
+                "so it is never stale.",
     )
     @ApiResponse(responseCode = "200", description = "Your bills, earliest due date first")
     fun list(
         @RequestParam(required = false) month: String?,
+        @RequestParam(required = false) unpaid: Boolean?,
     ): List<BillResponse> =
         billService
-            .list(owner = currentUser.require(), month = month?.let(::parseMonth))
-            .map { it.toResponse() }
+            .list(
+                owner = currentUser.require(),
+                month = month?.let(::parseMonth),
+                unpaid = unpaid,
+            ).map { it.toResponse() }
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)

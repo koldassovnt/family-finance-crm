@@ -70,7 +70,7 @@ the complexity being avoided here.
 
 | Method | Path                | Purpose                                                     |
 |--------|----------------------|--------------------------------------------------------------|
-| GET    | `/api/v1/bills`         | list the caller's bills, earliest due date first; `month=2026-09` filters by due date, omit it for all |
+| GET    | `/api/v1/bills`         | list the caller's bills, earliest due date first; `month=2026-09` filters by due date and `unpaid=true` by outstanding status, independently or together, omit both for all |
 | POST   | `/api/v1/bills`         | create one bill                                             |
 | POST   | `/api/v1/bills/batch`   | create many from a pattern (see above); returns the created rows |
 | PATCH  | `/api/v1/bills/{id}`    | update name/amount/currency/date, or set `isPaid`           |
@@ -80,8 +80,13 @@ the complexity being avoided here.
 The calendar view is a frontend concern — the backend just serves the month's
 bills and lets the UI lay them out.
 
-⚠ **A month view hides overdue bills from earlier months.** `?month=2026-09`
-returns only bills *due* in September, so an unpaid August bill — arguably the
-thing most worth seeing — is absent. Listing without `month` returns everything
-including those, which is the workaround today. A `?unpaid=true` filter would
-be the real fix if the calendar becomes the main way these are read.
+**A month view alone hides overdue bills from earlier months** — `?month=2026-09`
+returns only bills *due* in September, so an unpaid August bill is absent. That
+is what `?unpaid=true` is for: it returns everything still owed regardless of
+when it fell due, and `?unpaid=false` returns the settled ones.
+
+The two filters are **independent and AND together** rather than having any
+combined special meaning. So a calendar screen makes two calls: `?month=2026-09`
+for the grid, and `?unpaid=true` for an arrears panel beside it. Keeping them
+orthogonal is what stops `month` from quietly meaning "this month, plus some
+older things too".
