@@ -13,7 +13,7 @@ month always reports the limit that actually applied then rather than today's.
 
 - `id: UUID`
 - `owner: User` (FK, required)
-- `category: Category` (FK, required) — **must be `kind = EXPENSE`**; usage only ever counts `EXPENSE` transactions, so an income budget could never read anything but zero
+- `category: Category` (FK, required) — **fixed after creation**, since usage for a different category is simply a different budget. **Must be `kind = EXPENSE`**; usage only ever counts `EXPENSE` transactions, so an income budget could never read anything but zero
 - `period: enum` — `MONTHLY` only for now; don't build `YEARLY` until there's an actual need
 - `isDeleted: Boolean` (default `false`) — **no `@SQLRestriction`**, see `00-`
 - `createdAt`, `updatedAt`
@@ -43,7 +43,7 @@ month always reports the limit that actually applied then rather than today's.
 - `type: enum` — `SAVINGS`, `EMERGENCY_FUND`. **`DEBT_PAYOFF` was removed** — it depended on a `Debt` entity that no longer exists (loans/mortgages are tracked as ordinary expense categories now, so there's no stored "remaining owed" figure to measure progress against).
 - `targetAmount: BigDecimal`
 - `targetDate: LocalDate?` — nullable
-- `linkedAccount: Account` (FK, required) — must be owned by the same user (same ownership check pattern as `AccountService.getOwnedBy`); a user can point more than one goal at the same account (e.g. two separate savings milestones on one account)
+- `linkedAccount: Account` (FK, required) — **fixed after creation**: progress is measured against it, so swapping it would silently rewrite what every past reading meant. Must be owned by the same user (same ownership check pattern as `AccountService.getOwnedBy`); a user can point more than one goal at the same account (e.g. two separate savings milestones on one account)
 - `status: enum` — `ACTIVE`, `ABANDONED`, `ARCHIVED` (user-set only; there's no separate `ACHIEVED` *state* — see progress below). `ARCHIVED` is "done with this, keep the record"
 - `targetAmount` is denominated in the **linked account's currency** — converting a balance would need a current rate, which `00-` deliberately doesn't store
 - `isDeleted: Boolean` (default `false`) — see `00-`'s soft-delete rule

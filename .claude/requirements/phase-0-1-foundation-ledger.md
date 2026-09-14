@@ -36,7 +36,7 @@ Phase 0/1 code actually existed when the build started. See
 | POST   | `/api/v1/accounts`                      | create an account                                                   |
 | GET    | `/api/v1/accounts/{id}`                 | get one account                                                     |
 | PATCH  | `/api/v1/accounts/{id}`                 | update name/bank — **not** balance                                  |
-| POST   | `/api/v1/accounts/{id}/reconcile`       | correct a drifted balance; creates an `ADJUSTMENT` transaction      |
+| POST   | `/api/v1/accounts/{id}/reconcile`       | correct a drifted balance; creates an `ADJUSTMENT` transaction. `exchangeRate` required for a non-KZT account, same rule as `POST /transactions` |
 | DELETE | `/api/v1/accounts/{id}`                 | soft delete; blocked if an active `Goal` still points to it         |
 | GET    | `/api/v1/categories`                    | list your categories                                                |
 | POST   | `/api/v1/categories`                    | create a category                                                   |
@@ -50,6 +50,19 @@ Phase 0/1 code actually existed when the build started. See
 | PATCH  | `/api/v1/transactions/{id}`             | edit amount/date/category/note only — **not** type/account/toAccount (delete + recreate for those); re-applies the balance delta if amount changes |
 | DELETE | `/api/v1/transactions/{id}`             | soft delete; **reverses its balance effect** — a hidden transaction can't leave a balance that assumes it still happened |
 
+**Validation rules decided while building, not in the original spec:**
+- **`POST /api/v1/transactions` rejects `type = ADJUSTMENT`** with a 400 pointing
+  at `/reconcile`. Otherwise the "balance corrections always go through an
+  `ADJUSTMENT`, never a direct edit" rule has an open back door.
+- **A transaction's category must match its type's kind** — an `EXPENSE`
+  transaction needs an `EXPENSE` category, `INCOME` needs `INCOME`. An
+  `INCOME` category on an expense is a data error, not a preference.
+- **`TRANSFER` and `ADJUSTMENT` carry no category at all**, and one is rejected
+  if supplied.
+- **Soft-deleting a `Category` with live sub-categories is blocked** (409), so
+  the tree can't be left with dangling parents. Re-parent or delete the
+  children first. (Historical transactions still never block it — see `00-`.)
+
 **No pagination anywhere.** List endpoints are bounded by date range
 instead: `from`/`to` are required on transaction history and the range is
 capped (suggest 1 year) so a single response can't grow unbounded. Accounts,
@@ -57,11 +70,21 @@ categories, and banks are small enough to return whole. If transaction volume
 ever makes even a year's range unwieldy, add `page`/`size` then — the
 date-range contract doesn't block it.
 
-## Implementation Plan (ordered — each step assumes the ones before it are done)
+## Implementation Plan — historical
 
-This is the same checklist as before, but sequenced with the dependencies
-and gotchas made explicit, so this can be handed to Claude Code as a series
-of steps rather than an unordered pile.
+⚠ **Kept for the reasoning, not as instructions.** This was written when the
+code was believed to already exist and need retrofitting; in fact nothing had
+been built, so it was built once straight to the target above. Two steps below
+are now actively wrong:
+
+- **Step 1's blanket `@SQLRestriction`** — `Category`, `Account` and `Budget`
+  must *not* have it. Following step 1 literally reintroduces the bug where a
+  soft-deleted parent resolves to `null` on every row that references it. See
+  `00-` for the rule that replaced it.
+- **The "retrofit to interface + Impl" notes** in steps 6 and 7 never applied —
+  every service was written as interface + `Impl` from the start.
+
+The original sequencing follows.
 
 1. **Soft-delete + auditing infrastructure, first.** Add `isDeleted: Boolean`
    (default `false`) and `updatedAt` to `User`, `Account`, `Category`,
