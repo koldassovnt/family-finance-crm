@@ -115,6 +115,17 @@ class CategoryServiceImplTest {
     }
 
     @Test
+    fun `rejects a blank name on update`() {
+        val subject = category(owner)
+        every { categoryRepository.findActiveById(subject.idValue) } returns subject
+
+        assertThrows<ValidationException> {
+            service.update(subject.idValue, owner, UpdateCategoryRequest(name = "   "))
+        }
+        assertEquals("Groceries", subject.name)
+    }
+
+    @Test
     fun `soft deletes rather than removing the row`() {
         val subject = category(owner)
         every { categoryRepository.findActiveById(subject.idValue) } returns subject

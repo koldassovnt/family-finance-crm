@@ -45,7 +45,7 @@ class CategoryServiceImpl(
         return categoryRepository.save(
             Category(
                 owner = owner,
-                name = request.name.trim(),
+                name = requireNonBlankName(request.name),
                 parent = parent,
                 kind = kind,
             ),
@@ -59,7 +59,7 @@ class CategoryServiceImpl(
         request: UpdateCategoryRequest,
     ): Category {
         val category = getOwnedBy(id, owner)
-        request.name?.let { category.name = it.trim() }
+        request.name?.let { category.name = requireNonBlankName(it) }
         request.parentId?.let { parentId ->
             category.parent = parentId.orElse(null)?.let { resolveParent(it, category, owner) }
         }

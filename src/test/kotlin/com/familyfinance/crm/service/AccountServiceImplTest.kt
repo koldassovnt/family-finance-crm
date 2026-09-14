@@ -111,6 +111,17 @@ class AccountServiceImplTest {
     }
 
     @Test
+    fun `rejects a blank name on update`() {
+        val subject = account(owner)
+        every { accountRepository.findActiveById(subject.idValue) } returns subject
+
+        assertThrows<ValidationException> {
+            service.update(subject.idValue, owner, UpdateAccountRequest(name = "   "))
+        }
+        assertEquals("Main", subject.name)
+    }
+
+    @Test
     fun `soft deletes rather than removing the row`() {
         val subject = account(owner)
         every { accountRepository.findActiveById(subject.idValue) } returns subject

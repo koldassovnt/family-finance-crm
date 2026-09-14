@@ -263,6 +263,18 @@ class BillServiceImplTest {
     }
 
     @Test
+    fun `rejects a blank name on update`() {
+        val subject = bill(owner)
+        every { billRepository.findById(subject.idValue) } returns Optional.of(subject)
+
+        // @NotBlank cannot guard an optional PATCH field, so the service must.
+        assertThrows<ValidationException> {
+            service.update(subject.idValue, owner, UpdateBillRequest(name = "   "))
+        }
+        assertEquals("Electricity", subject.name)
+    }
+
+    @Test
     fun `deleting a batch soft-deletes every row in it`() {
         val batchId = UUID.randomUUID()
         val rows = listOf(bill(owner, batchId = batchId), bill(owner, batchId = batchId))

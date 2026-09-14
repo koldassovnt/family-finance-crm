@@ -8,7 +8,7 @@ import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
 import org.slf4j.LoggerFactory
-import org.springframework.dao.DataAccessException
+import org.springframework.core.NestedRuntimeException
 import org.springframework.http.HttpStatus
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
 import org.springframework.security.core.authority.SimpleGrantedAuthority
@@ -37,10 +37,15 @@ class JwtAuthenticationFilter(
                 val valid =
                     try {
                         stillValid(principal)
-                    } catch (ex: DataAccessException) {
+                    } catch (ex: NestedRuntimeException) {
                         // This filter runs outside DispatcherServlet, so an
                         // escaping exception would become a container error page
                         // rather than the JSON shape every client expects.
+                        // NestedRuntimeException, not DataAccessException: a
+                        // repository call that cannot even begin its transaction
+                        // (pool exhausted, database unreachable) throws
+                        // CannotCreateTransactionException, which is a sibling
+                        // rather than a subclass.
                         log.error("Could not check token validity", ex)
                         response.writeError(
                             objectMapper,

@@ -75,7 +75,7 @@ class BillServiceImpl(
             billRepository.save(
                 Bill(
                     owner = owner,
-                    name = request.name.trim(),
+                    name = requireNonBlankName(request.name),
                     amount = amount,
                     currency = normalizeCurrency(request.currency),
                     dueDate = dueDate,
@@ -112,7 +112,7 @@ class BillServiceImpl(
 
         val batchId = UUID.randomUUID()
         val currency = normalizeCurrency(request.currency)
-        val name = request.name.trim()
+        val name = requireNonBlankName(request.name)
         val bills =
             generateSequence(startMonth) { it.plusMonths(1) }
                 .takeWhile { !it.isAfter(endMonth) }
@@ -137,7 +137,7 @@ class BillServiceImpl(
         request: UpdateBillRequest,
     ): BillWithStatus {
         val bill = getOwnedBy(id, owner)
-        request.name?.let { bill.name = it.trim() }
+        request.name?.let { bill.name = requireNonBlankName(it) }
         request.currency?.let { currency ->
             // Changing only the currency would silently reinterpret the amount —
             // 12000 KZT becoming 12000 USD is a ~480x rewrite with no conversion.

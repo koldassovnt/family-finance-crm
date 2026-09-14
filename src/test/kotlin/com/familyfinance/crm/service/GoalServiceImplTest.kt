@@ -189,6 +189,17 @@ class GoalServiceImplTest {
     }
 
     @Test
+    fun `rejects a blank name on update`() {
+        val subject = goal(owner, account(owner))
+        every { goalRepository.findDetailedById(subject.idValue) } returns subject
+
+        assertThrows<ValidationException> {
+            service.update(subject.idValue, owner, UpdateGoalRequest(name = "   "))
+        }
+        assertEquals("Emergency fund", subject.name)
+    }
+
+    @Test
     fun `soft deletes rather than removing the row`() {
         val subject = goal(owner, account(owner))
         every { goalRepository.findDetailedById(subject.idValue) } returns subject

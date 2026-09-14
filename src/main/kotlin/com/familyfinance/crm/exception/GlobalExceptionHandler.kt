@@ -2,6 +2,7 @@ package com.familyfinance.crm.exception
 
 import jakarta.validation.ConstraintViolationException
 import org.slf4j.LoggerFactory
+import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.http.converter.HttpMessageNotReadableException
@@ -86,6 +87,19 @@ class GlobalExceptionHandler {
         ResponseEntity
             .status(HttpStatus.NOT_FOUND)
             .body(ErrorResponse(ErrorCode.NOT_FOUND, "No endpoint at ${ex.resourcePath}"))
+
+    /**
+     * A unique index losing a race — two concurrent requests both inserting the
+     * one budget version allowed to be open, say. The outcome is a conflict, not
+     * a server fault, so it must not read as one.
+     */
+    @ExceptionHandler(DataIntegrityViolationException::class)
+    fun handleDataIntegrityViolation(ex: DataIntegrityViolationException): ResponseEntity<ErrorResponse> {
+        log.warn("Constraint violation", ex)
+        return ResponseEntity
+            .status(HttpStatus.CONFLICT)
+            .body(ErrorResponse(ErrorCode.CONFLICT, "That change conflicts with the current state; try again"))
+    }
 
     @ExceptionHandler(Exception::class)
     fun handleUnexpected(ex: Exception): ResponseEntity<ErrorResponse> {

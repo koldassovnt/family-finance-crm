@@ -11,13 +11,18 @@
 -- Then substitute the three values below and run:
 --     psql "$DB_URL" -f db/bootstrap-owner.sql
 
-INSERT INTO users (id, email, display_name, password_hash, role, is_deleted, created_at, updated_at)
+INSERT INTO users (
+    id, email, display_name, password_hash, role,
+    -- NOT NULL since V5: tokens issued before this instant are rejected.
+    password_changed_at,
+    is_deleted, created_at, updated_at)
 VALUES (
     gen_random_uuid(),
     'you@example.com',
     'Your Name',
     '$2a$10$REPLACE_WITH_THE_GENERATED_HASH',
     'OWNER',
+    now(),
     FALSE,
     now(),
     now()

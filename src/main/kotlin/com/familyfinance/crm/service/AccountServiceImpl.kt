@@ -49,7 +49,7 @@ class AccountServiceImpl(
             Account(
                 owner = owner,
                 bank = request.bankId?.let(bankService::getById),
-                name = request.name.trim(),
+                name = requireNonBlankName(request.name),
                 type = type,
                 balance = request.balance,
                 currency = normalizeCurrency(request.currency),
@@ -64,7 +64,7 @@ class AccountServiceImpl(
         request: UpdateAccountRequest,
     ): Account {
         val account = getOwnedBy(id, owner)
-        request.name?.let { account.name = it.trim() }
+        request.name?.let { account.name = requireNonBlankName(it) }
         request.bankId?.let { bankId ->
             val bank = bankId.orElse(null)?.let(bankService::getById)
             if (bank != null && account.type == AccountType.CASH) {
@@ -89,14 +89,3 @@ class AccountServiceImpl(
         account.isDeleted = true
     }
 }
-
-/** Currency is a plain 3-letter code, stored uppercase. */
-internal fun normalizeCurrency(currency: String): String {
-    val normalized = currency.trim().uppercase()
-    if (normalized.length != CURRENCY_CODE_LENGTH) {
-        throw invalidField("currency", "must be exactly $CURRENCY_CODE_LENGTH characters")
-    }
-    return normalized
-}
-
-private const val CURRENCY_CODE_LENGTH = 3

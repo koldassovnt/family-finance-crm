@@ -36,7 +36,7 @@ class GoalServiceImpl(
             goalRepository.save(
                 Goal(
                     owner = owner,
-                    name = request.name.trim(),
+                    name = requireNonBlankName(request.name),
                     type = type,
                     targetAmount = targetAmount,
                     targetDate = request.targetDate,
@@ -54,7 +54,7 @@ class GoalServiceImpl(
         request: UpdateGoalRequest,
     ): GoalWithProgress {
         val goal = getOwnedBy(id, owner)
-        request.name?.let { goal.name = it.trim() }
+        request.name?.let { goal.name = requireNonBlankName(it) }
         request.targetAmount?.let { goal.targetAmount = requirePositiveTarget(it) }
         request.targetDate?.let { goal.targetDate = it.orElse(null) }
         request.status?.let { goal.status = requireReactivatable(it, goal) }
