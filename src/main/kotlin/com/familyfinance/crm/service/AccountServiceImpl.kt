@@ -81,9 +81,10 @@ class AccountServiceImpl(
         owner: User,
     ) {
         val account = getOwnedBy(id, owner)
-        // A goal measures its progress off this balance, so it blocks the delete.
-        if (goalRepository.existsForAccountId(id)) {
-            throw ConflictException("Account $id still has an active goal; delete the goal first")
+        // An active goal measures its progress off this balance, so it blocks the
+        // delete; an abandoned or archived one does not.
+        if (goalRepository.existsActiveForAccountId(id)) {
+            throw ConflictException("Account $id still has an active goal; abandon or delete the goal first")
         }
         account.isDeleted = true
     }

@@ -18,8 +18,9 @@ Phase 0/1 code actually existed when the build started. See
   `role = OWNER` with a 400. There is exactly one `OWNER`, created by the
   bootstrap step, so admin accounts can't quietly proliferate.
   The `OWNER` sets the new user's initial email/displayName/password
-  directly; there's no self-service "change my password" endpoint yet —
-  worth adding once someone other than you is actually using this day to day.
+  directly. `POST /api/v1/users/me/password` (any role, own account only)
+  changes it afterwards, and moves `passwordChangedAt` forward — which is also
+  the system's only token revocation, so it logs every other session out.
 - `POST /api/v1/auth/login` — email + password → JWT. Token expiry/refresh
   strategy isn't pinned down yet (see `00-`); this endpoint exists, the
   details of what it returns firm up when it's actually built.
@@ -30,6 +31,7 @@ Phase 0/1 code actually existed when the build started. See
 |--------|--------------------------------------|------------------------------------------------------------------------|
 | POST   | `/api/v1/auth/login`                    | log in, receive a JWT                                                |
 | POST   | `/api/v1/users`                         | `OWNER`-only: create a `MEMBER` account                              |
+| POST   | `/api/v1/users/me/password`             | change your own password; invalidates every token issued before now  |
 | GET    | `/api/v1/accounts`                      | list your accounts                                                  |
 | POST   | `/api/v1/accounts`                      | create an account                                                   |
 | GET    | `/api/v1/accounts/{id}`                 | get one account                                                     |
@@ -42,7 +44,7 @@ Phase 0/1 code actually existed when the build started. See
 | DELETE | `/api/v1/categories/{id}`               | soft delete; blocked only if an active `Budget` references it — historical transactions do **not** block it |
 | GET    | `/api/v1/banks`                         | list banks                                                          |
 | POST   | `/api/v1/banks`                         | find-or-create by name                                              |
-| POST   | `/api/v1/transactions`                  | record a transaction                                                |
+| POST   | `/api/v1/transactions`                  | record a transaction; `exchangeRate` required for a non-KZT account |
 | GET    | `/api/v1/accounts/{id}/transactions`    | account history; `from`/`to` **required**, range capped at 1 year — no paging (see below) |
 | GET    | `/api/v1/transactions/summary`          | monthly summary (`month=2026-09`)                                   |
 | PATCH  | `/api/v1/transactions/{id}`             | edit amount/date/category/note only — **not** type/account/toAccount (delete + recreate for those); re-applies the balance delta if amount changes |

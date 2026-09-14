@@ -1,6 +1,7 @@
 package com.familyfinance.crm.service
 
 import com.familyfinance.crm.domain.Account
+import com.familyfinance.crm.domain.BASE_CURRENCY
 import com.familyfinance.crm.domain.Category
 import com.familyfinance.crm.domain.CategoryKind
 import com.familyfinance.crm.domain.Transaction
@@ -18,6 +19,7 @@ import com.familyfinance.crm.repository.TransactionRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.math.BigDecimal
+import java.math.RoundingMode
 import java.time.Clock
 import java.time.LocalDate
 import java.time.YearMonth
@@ -46,15 +48,31 @@ class TransactionServiceImpl(
         val amount = requirePositiveAmount(request.amount)
         val account = accountService.getOwnedBy(accountId, owner)
         val occurredOn = resolveOccurredOn(request.occurredOn)
+        val rate = resolveExchangeRate(request.exchangeRate, account)
 
         val transaction =
             when (type) {
                 TransactionType.INCOME, TransactionType.EXPENSE -> {
-                    buildSimple(type, amount, account, occurredOn, request, owner)
+                    buildSimple(
+                        type = type,
+                        amount = amount,
+                        rate = rate,
+                        account = account,
+                        occurredOn = occurredOn,
+                        request = request,
+                        owner = owner,
+                    )
                 }
 
                 TransactionType.TRANSFER -> {
-                    buildTransfer(amount, account, occurredOn, request, owner)
+                    buildTransfer(
+                        amount = amount,
+                        rate = rate,
+                        account = account,
+                        occurredOn = occurredOn,
+                        request = request,
+                        owner = owner,
+                    )
                 }
 
                 TransactionType.ADJUSTMENT -> {
@@ -87,6 +105,12 @@ class TransactionServiceImpl(
             transaction.applyToBalances(REVERSE)
             transaction.amount = validated
             transaction.applyToBalances(APPLY)
+        }
+        request.exchangeRate?.let { newRate ->
+            transaction.exchangeRate = validateExchangeRate(newRate, transaction.currency)
+        }
+        if (request.amount != null || request.exchangeRate != null) {
+            transaction.amountKzt = toKzt(transaction.amount, transaction.exchangeRate)
         }
 
         request.occurredOn?.let { transaction.occurredOn = resolveOccurredOn(it) }
@@ -133,6 +157,7 @@ class TransactionServiceImpl(
         val totalExpense = transactionRepository.sumByType(owner, TransactionType.EXPENSE, range.from, range.to)
         return MonthlySummaryResponse(
             month = month.toString(),
+            currency = BASE_CURRENCY,
             from = range.from,
             to = range.to,
             totalIncome = totalIncome,
@@ -161,12 +186,15 @@ class TransactionServiceImpl(
         if (delta.signum() == 0) {
             throw invalidField("actualBalance", "already matches the tracked balance; nothing to correct")
         }
+        val rate = resolveExchangeRate(request.exchangeRate, account)
         val saved =
             transactionRepository.save(
                 Transaction(
                     type = TransactionType.ADJUSTMENT,
                     amount = delta,
                     currency = account.currency,
+                    exchangeRate = rate,
+                    amountKzt = toKzt(delta, rate),
                     toAmount = null,
                     occurredOn = resolveOccurredOn(request.occurredOn),
                     account = account,
@@ -183,6 +211,7 @@ class TransactionServiceImpl(
     private fun buildSimple(
         type: TransactionType,
         amount: BigDecimal,
+        rate: BigDecimal,
         account: Account,
         occurredOn: LocalDate,
         request: CreateTransactionRequest,
@@ -198,6 +227,8 @@ class TransactionServiceImpl(
             type = type,
             amount = amount,
             currency = account.currency,
+            exchangeRate = rate,
+            amountKzt = toKzt(amount, rate),
             toAmount = null,
             occurredOn = occurredOn,
             account = account,
@@ -209,6 +240,7 @@ class TransactionServiceImpl(
 
     private fun buildTransfer(
         amount: BigDecimal,
+        rate: BigDecimal,
         account: Account,
         occurredOn: LocalDate,
         request: CreateTransactionRequest,
@@ -227,6 +259,9 @@ class TransactionServiceImpl(
             type = TransactionType.TRANSFER,
             amount = amount,
             currency = account.currency,
+            exchangeRate = rate,
+            // Describes the source movement; a transfer never reaches a total anyway.
+            amountKzt = toKzt(amount, rate),
             toAmount = toAmount,
             occurredOn = occurredOn,
             account = account,
@@ -307,6 +342,37 @@ class TransactionServiceImpl(
         return resolved
     }
 
+    /**
+     * A KZT account never carries a rate other than 1; anything else must say
+     * what it was worth, since no rate source is stored to look it up later.
+     */
+    private fun resolveExchangeRate(
+        exchangeRate: BigDecimal?,
+        account: Account,
+    ): BigDecimal =
+        if (account.currency == BASE_CURRENCY) {
+            validateExchangeRate(exchangeRate ?: BigDecimal.ONE, account.currency)
+        } else {
+            validateExchangeRate(
+                exchangeRate ?: throw invalidField(
+                    "exchangeRate",
+                    "is required for a ${account.currency} account: give the $BASE_CURRENCY value of 1 ${account.currency}",
+                ),
+                account.currency,
+            )
+        }
+
+    private fun validateExchangeRate(
+        exchangeRate: BigDecimal,
+        currency: String,
+    ): BigDecimal {
+        if (exchangeRate.signum() <= 0) throw invalidField("exchangeRate", "must be greater than zero")
+        if (currency == BASE_CURRENCY && exchangeRate.compareTo(BigDecimal.ONE) != 0) {
+            throw invalidField("exchangeRate", "must be 1 for a $BASE_CURRENCY account")
+        }
+        return exchangeRate
+    }
+
     private fun validateNote(note: String): String {
         if (note.length > MAX_NOTE_LENGTH) {
             throw invalidField("note", "must be at most $MAX_NOTE_LENGTH characters")
@@ -316,6 +382,7 @@ class TransactionServiceImpl(
 }
 
 private const val MAX_NOTE_LENGTH = 1000
+private const val MONEY_SCALE = 4
 private const val APPLY = 1
 private const val REVERSE = -1
 
@@ -349,6 +416,11 @@ private fun Transaction.applyToBalances(direction: Int) {
         }
     }
 }
+
+private fun toKzt(
+    amount: BigDecimal,
+    exchangeRate: BigDecimal,
+): BigDecimal = amount.multiply(exchangeRate).setScale(MONEY_SCALE, RoundingMode.HALF_UP)
 
 private fun requirePositiveAmount(
     amount: BigDecimal?,

@@ -9,6 +9,7 @@ import com.familyfinance.crm.domain.User
 import com.familyfinance.crm.repository.CategoryTotal
 import com.familyfinance.crm.service.BudgetWithUsage
 import com.familyfinance.crm.service.GoalWithProgress
+import java.time.YearMonth
 import java.util.UUID
 
 fun User.toResponse() =
@@ -47,6 +48,8 @@ fun Transaction.toResponse() =
         amount = amount,
         currency = currency,
         toAmount = toAmount,
+        exchangeRate = exchangeRate,
+        amountKzt = amountKzt,
         occurredOn = occurredOn,
         accountId = account.requiredId(),
         toAccountId = toAccount?.id,
@@ -58,10 +61,12 @@ fun BudgetWithUsage.toResponse() =
     BudgetResponse(
         id = budget.requiredId(),
         category = budget.category.toResponse(),
-        limitAmount = budget.limitAmount,
+        limitAmount = version.limitAmount,
         period = budget.period,
-        alertThresholdPercent = budget.alertThresholdPercent,
+        alertThresholdPercent = version.alertThresholdPercent,
         month = month.toString(),
+        effectiveFrom = YearMonth.from(version.effectiveFromMonth).toString(),
+        effectiveTo = version.effectiveToMonth?.let { YearMonth.from(it).toString() },
         spent = spent,
         remaining = remaining,
         percentUsed = percentUsed,
@@ -88,4 +93,4 @@ fun CategoryTotal.toSummary() =
     )
 
 /** Any entity reaching the API boundary has been persisted, so its id is set. */
-private fun BaseEntity.requiredId(): UUID = checkNotNull(id) { "Entity has not been persisted yet" }
+fun BaseEntity.requiredId(): UUID = checkNotNull(id) { "Entity has not been persisted yet" }

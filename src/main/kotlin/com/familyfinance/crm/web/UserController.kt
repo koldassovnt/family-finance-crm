@@ -1,7 +1,9 @@
 package com.familyfinance.crm.web
 
+import com.familyfinance.crm.dto.ChangePasswordRequest
 import com.familyfinance.crm.dto.CreateUserRequest
 import com.familyfinance.crm.dto.UserResponse
+import com.familyfinance.crm.dto.requiredId
 import com.familyfinance.crm.dto.toResponse
 import com.familyfinance.crm.exception.ErrorResponse
 import com.familyfinance.crm.service.UserService
@@ -24,6 +26,7 @@ import org.springframework.web.bind.annotation.RestController
 @Tag(name = "Users", description = "Owner-only user provisioning")
 class UserController(
     private val userService: UserService,
+    private val currentUser: CurrentUserProvider,
 ) {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
@@ -41,4 +44,26 @@ class UserController(
     fun create(
         @Valid @RequestBody request: CreateUserRequest,
     ): UserResponse = userService.createMember(request).toResponse()
+
+    @PostMapping("/me/password")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @Operation(
+        summary = "Change your own password",
+        description =
+            "Any role, for your own account only. Also invalidates every token issued before now, " +
+                "including the one making this call — log in again afterwards.",
+    )
+    @ApiResponse(responseCode = "204", description = "Changed; existing tokens are now invalid")
+    @ApiResponse(
+        responseCode = "400",
+        description = "Current password is wrong, or the new one is unchanged",
+        content = [Content(schema = Schema(implementation = ErrorResponse::class))],
+    )
+    fun changePassword(
+        @Valid @RequestBody request: ChangePasswordRequest,
+    ) = userService.changePassword(
+        id = currentUser.require().requiredId(),
+        currentPassword = request.currentPassword,
+        newPassword = request.newPassword,
+    )
 }

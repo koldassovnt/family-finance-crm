@@ -30,6 +30,13 @@ interface CategoryRepository : JpaRepository<Category, UUID> {
     )
     fun findActiveById(id: UUID): Category?
 
+    /**
+     * Every category of this owner, soft-deleted ones included — a deleted
+     * category's historical spending still rolls up to its parent's budget.
+     */
+    @Query("SELECT c FROM Category c WHERE c.owner = :owner")
+    fun findAllByOwnerIncludingDeleted(owner: User): List<Category>
+
     @Query(
         """
         SELECT count(c) > 0 FROM Category c

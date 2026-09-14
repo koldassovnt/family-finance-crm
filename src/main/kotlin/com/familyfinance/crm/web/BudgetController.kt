@@ -6,6 +6,7 @@ import com.familyfinance.crm.dto.UpdateBudgetRequest
 import com.familyfinance.crm.dto.toResponse
 import com.familyfinance.crm.exception.ErrorResponse
 import com.familyfinance.crm.service.BudgetService
+import com.familyfinance.crm.service.parseMonth
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.media.Content
 import io.swagger.v3.oas.annotations.media.Schema
@@ -20,8 +21,11 @@ import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
+import java.time.Clock
+import java.time.YearMonth
 import java.util.UUID
 
 @RestController
@@ -30,16 +34,27 @@ import java.util.UUID
 class BudgetController(
     private val budgetService: BudgetService,
     private val currentUser: CurrentUserProvider,
+    private val clock: Clock,
 ) {
     @GetMapping
     @Operation(
-        summary = "List your budgets with this month's usage",
+        summary = "List your budgets with a month's usage",
         description =
-            "Usage is summed from the current calendar month's EXPENSE transactions in Asia/Almaty; " +
-                "ADJUSTMENT transactions are excluded. `percentUsed` is not capped at 100.",
+            "Defaults to the current month in Asia/Almaty; pass `month=2026-09` for any other. " +
+                "Each budget reports the limit that actually applied that month, and usage summed " +
+                "from that month's EXPENSE transactions in KZT, rolled up from any sub-categories. " +
+                "TRANSFER and ADJUSTMENT are excluded, and `percentUsed` is not capped at 100. " +
+                "A budget that did not exist yet is simply absent from that month.",
     )
-    @ApiResponse(responseCode = "200", description = "Your budgets")
-    fun list(): List<BudgetResponse> = budgetService.list(currentUser.require()).map { it.toResponse() }
+    @ApiResponse(responseCode = "200", description = "Your budgets for that month")
+    fun list(
+        @RequestParam(required = false) month: String?,
+    ): List<BudgetResponse> =
+        budgetService
+            .list(
+                owner = currentUser.require(),
+                month = month?.let(::parseMonth) ?: YearMonth.now(clock),
+            ).map { it.toResponse() }
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
@@ -61,7 +76,8 @@ class BudgetController(
     @Operation(
         summary = "Update a budget",
         description =
-            "Limit and alert threshold only — the category is fixed. " +
+            "Limit and alert threshold only — the category is fixed. Takes effect from the current " +
+                "month: past months keep the limit that applied then. " +
                 "Send `alertThresholdPercent: null` to clear the cue.",
     )
     @ApiResponse(responseCode = "200", description = "Updated")
@@ -72,7 +88,12 @@ class BudgetController(
 
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    @Operation(summary = "Soft delete a budget", description = "Frees the category to be budgeted again.")
+    @Operation(
+        summary = "Soft delete a budget",
+        description =
+            "Stops it from this month onward and frees the category to be budgeted again. " +
+                "Past months keep reporting it against the limit that applied then.",
+    )
     @ApiResponse(responseCode = "204", description = "Deleted")
     fun delete(
         @PathVariable id: UUID,

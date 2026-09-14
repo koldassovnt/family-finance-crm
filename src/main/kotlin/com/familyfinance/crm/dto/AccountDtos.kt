@@ -1,6 +1,7 @@
 package com.familyfinance.crm.dto
 
 import com.familyfinance.crm.domain.AccountType
+import com.familyfinance.crm.domain.BASE_CURRENCY
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.NotNull
 import jakarta.validation.constraints.Size
@@ -20,7 +21,7 @@ data class CreateAccountRequest(
     /** Opening balance; defaults to zero. May be negative. */
     val balance: BigDecimal = BigDecimal.ZERO,
     @field:Size(min = 3, max = 3, message = "must be exactly 3 characters")
-    val currency: String = DEFAULT_CURRENCY,
+    val currency: String = BASE_CURRENCY,
 )
 
 /**
@@ -35,9 +36,11 @@ data class UpdateAccountRequest(
 )
 
 data class ReconcileRequest(
-    /** The balance the bank actually reports. */
+    /** The balance the bank actually reports, in the account's currency. */
     @field:NotNull(message = "is required")
     val actualBalance: BigDecimal?,
+    /** KZT per 1 unit of the account's currency; required for a non-KZT account. */
+    val exchangeRate: BigDecimal? = null,
     @field:Size(max = 1000, message = "must be at most 1000 characters")
     val note: String? = null,
     /** Defaults to today in the app timezone. */
@@ -52,5 +55,3 @@ data class AccountResponse(
     val currency: String,
     val bank: BankResponse?,
 )
-
-const val DEFAULT_CURRENCY = "KZT"

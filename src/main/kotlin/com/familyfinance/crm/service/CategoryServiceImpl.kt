@@ -7,7 +7,7 @@ import com.familyfinance.crm.dto.UpdateCategoryRequest
 import com.familyfinance.crm.exception.ConflictException
 import com.familyfinance.crm.exception.NotFoundException
 import com.familyfinance.crm.exception.invalidField
-import com.familyfinance.crm.repository.BudgetRepository
+import com.familyfinance.crm.repository.BudgetVersionRepository
 import com.familyfinance.crm.repository.CategoryRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -18,7 +18,7 @@ class CategoryServiceImpl(
     private val categoryRepository: CategoryRepository,
     // A repository rather than BudgetService: BudgetService already depends on
     // this service, and a cycle between the two would not start.
-    private val budgetRepository: BudgetRepository,
+    private val budgetVersionRepository: BudgetVersionRepository,
 ) : CategoryService {
     @Transactional(readOnly = true)
     override fun list(owner: User): List<Category> = categoryRepository.findAllActiveByOwner(owner)
@@ -72,8 +72,9 @@ class CategoryServiceImpl(
         owner: User,
     ) {
         val category = getOwnedBy(id, owner)
-        // A live budget is current config, not history, so it blocks the delete.
-        if (budgetRepository.existsForCategoryId(id)) {
+        // A budget whose version is still open is current config, not history,
+        // so it blocks the delete; a closed version does not.
+        if (budgetVersionRepository.existsOpenForCategory(id)) {
             throw ConflictException("Category $id still has an active budget; delete the budget first")
         }
         if (categoryRepository.hasActiveChildren(id)) {
@@ -82,6 +83,38 @@ class CategoryServiceImpl(
         // Transactions referencing this category deliberately do NOT block the
         // delete — they keep rendering with its name in history. See `00-`.
         category.isDeleted = true
+    }
+
+    @Transactional(readOnly = true)
+    override fun descendantIndex(owner: User): Map<UUID, Set<UUID>> {
+        val categories = categoryRepository.findAllByOwnerIncludingDeleted(owner)
+        val childrenByParent =
+            categories
+                .filter { it.parent != null }
+                .groupBy({ checkNotNull(it.parent).id }, { checkNotNull(it.id) })
+        return categories.associate { category ->
+            val root = checkNotNull(category.id)
+            root to collectDescendants(root, childrenByParent)
+        }
+    }
+
+    /**
+     * Breadth-first rather than recursive, and tracking what it has seen, so a
+     * cycle that somehow reached the database can't spin forever here.
+     */
+    private fun collectDescendants(
+        root: UUID,
+        childrenByParent: Map<UUID?, List<UUID>>,
+    ): Set<UUID> {
+        val collected = mutableSetOf(root)
+        val queue = ArrayDeque(childrenByParent[root].orEmpty())
+        while (queue.isNotEmpty()) {
+            val next = queue.removeFirst()
+            if (collected.add(next)) {
+                queue.addAll(childrenByParent[next].orEmpty())
+            }
+        }
+        return collected
     }
 
     private fun resolveParent(

@@ -15,6 +15,7 @@ enum class GoalType { SAVINGS, EMERGENCY_FUND }
 
 /**
  * User-set only. There is no `ACHIEVED` state: "achieved" is derived from the
- * linked account's balance on read, so an achieved goal can still be abandoned.
+ * linked account's balance on read, so an achieved goal can still be abandoned
+ * or archived. Only `ACTIVE` goals block deleting their linked account.
  */
-enum class GoalStatus { ACTIVE, ABANDONED }
+enum class GoalStatus { ACTIVE, ABANDONED, ARCHIVED }

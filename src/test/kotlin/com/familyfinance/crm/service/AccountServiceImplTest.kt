@@ -34,7 +34,7 @@ class AccountServiceImplTest {
 
     init {
         every { accountRepository.save(any<Account>()) } answers { firstArg<Account>().withId() }
-        every { goalRepository.existsForAccountId(any()) } returns false
+        every { goalRepository.existsActiveForAccountId(any(), any()) } returns false
     }
 
     @Test
@@ -102,10 +102,10 @@ class AccountServiceImplTest {
     }
 
     @Test
-    fun `blocks deleting an account that an active goal points at`() {
+    fun `blocks deleting an account that an ACTIVE goal points at`() {
         val subject = account(owner)
         every { accountRepository.findActiveById(subject.idValue) } returns subject
-        every { goalRepository.existsForAccountId(subject.idValue) } returns true
+        every { goalRepository.existsActiveForAccountId(subject.idValue, any()) } returns true
 
         assertThrows<ConflictException> { service.softDelete(subject.idValue, owner) }
     }

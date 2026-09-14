@@ -15,4 +15,14 @@ interface UserService {
 
     /** `OWNER`-only. Can only ever create a `MEMBER` — see `00-`. */
     fun createMember(request: CreateUserRequest): User
+
+    /**
+     * Self-service, any role. Also invalidates every token issued before now,
+     * which is the only revocation this system has.
+     */
+    fun changePassword(
+        id: UUID,
+        currentPassword: String,
+        newPassword: String,
+    )
 }

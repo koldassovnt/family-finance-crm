@@ -6,6 +6,8 @@ import com.familyfinance.crm.dto.CreateUserRequest
 import com.familyfinance.crm.exception.ConflictException
 import com.familyfinance.crm.exception.UnauthenticatedException
 import com.familyfinance.crm.exception.ValidationException
+import com.familyfinance.crm.fixedClock
+import com.familyfinance.crm.idValue
 import com.familyfinance.crm.repository.UserRepository
 import com.familyfinance.crm.user
 import com.familyfinance.crm.withId
@@ -14,12 +16,13 @@ import io.mockk.mockk
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.springframework.security.crypto.password.PasswordEncoder
+import java.util.Optional
 import kotlin.test.assertEquals
 
 class UserServiceImplTest {
     private val userRepository = mockk<UserRepository>()
     private val passwordEncoder = mockk<PasswordEncoder>()
-    private val service = UserServiceImpl(userRepository, passwordEncoder)
+    private val service = UserServiceImpl(userRepository, passwordEncoder, fixedClock())
 
     private val request =
         CreateUserRequest(
@@ -58,6 +61,41 @@ class UserServiceImplTest {
         every { userRepository.existsByEmailIgnoreCase(request.email) } returns true
 
         assertThrows<ConflictException> { service.createMember(request) }
+    }
+
+    @Test
+    fun `changing a password moves passwordChangedAt forward, invalidating old tokens`() {
+        val existing = user()
+        every { userRepository.findById(existing.idValue) } returns Optional.of(existing)
+        every { passwordEncoder.matches("old-password", existing.passwordHash) } returns true
+        every { passwordEncoder.matches("new-password", existing.passwordHash) } returns false
+
+        service.changePassword(existing.idValue, "old-password", "new-password")
+
+        assertEquals("encoded", existing.passwordHash)
+        assertEquals(fixedClock().instant(), existing.passwordChangedAt)
+    }
+
+    @Test
+    fun `rejects a password change with the wrong current password`() {
+        val existing = user()
+        every { userRepository.findById(existing.idValue) } returns Optional.of(existing)
+        every { passwordEncoder.matches("wrong", existing.passwordHash) } returns false
+
+        assertThrows<ValidationException> {
+            service.changePassword(existing.idValue, "wrong", "new-password")
+        }
+    }
+
+    @Test
+    fun `rejects a new password identical to the current one`() {
+        val existing = user()
+        every { userRepository.findById(existing.idValue) } returns Optional.of(existing)
+        every { passwordEncoder.matches("same-password", existing.passwordHash) } returns true
+
+        assertThrows<ValidationException> {
+            service.changePassword(existing.idValue, "same-password", "same-password")
+        }
     }
 
     @Test

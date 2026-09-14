@@ -56,12 +56,12 @@ interface TransactionRepository : JpaRepository<Transaction, UUID> {
     fun findDetailedById(id: UUID): Transaction?
 
     /**
-     * Month totals per type for one owner. `ADJUSTMENT` is a balance
+     * Month totals per type for one owner, in KZT. `ADJUSTMENT` is a balance
      * correction, not spending, so callers must not include it — see `00-`.
      */
     @Query(
         """
-        SELECT coalesce(sum(t.amount), 0) FROM Transaction t
+        SELECT coalesce(sum(t.amountKzt), 0) FROM Transaction t
         WHERE t.account.owner = :owner
           AND t.type = :type
           AND t.occurredOn BETWEEN :from AND :to
@@ -75,36 +75,37 @@ interface TransactionRepository : JpaRepository<Transaction, UUID> {
     ): BigDecimal
 
     /**
-     * The same aggregation as [sumByCategory], narrowed to one category —
-     * this is what a budget's usage is computed from.
+     * The same aggregation as [sumByCategory], narrowed to a set of categories.
+     * A budget passes its own category plus every descendant, so spending filed
+     * under a sub-category counts toward the parent's budget.
      */
     @Query(
         """
-        SELECT coalesce(sum(t.amount), 0) FROM Transaction t
+        SELECT coalesce(sum(t.amountKzt), 0) FROM Transaction t
         WHERE t.account.owner = :owner
           AND t.type = :type
-          AND t.category.id = :categoryId
+          AND t.category.id IN :categoryIds
           AND t.occurredOn BETWEEN :from AND :to
         """,
     )
-    fun sumByTypeAndCategory(
+    fun sumByTypeAndCategories(
         owner: User,
         type: TransactionType,
-        categoryId: UUID,
+        categoryIds: Collection<UUID>,
         from: LocalDate,
         to: LocalDate,
     ): BigDecimal
 
     @Query(
         """
-        SELECT c.id AS categoryId, c.name AS categoryName, sum(t.amount) AS total
+        SELECT c.id AS categoryId, c.name AS categoryName, sum(t.amountKzt) AS total
         FROM Transaction t
         LEFT JOIN t.category c
         WHERE t.account.owner = :owner
           AND t.type = :type
           AND t.occurredOn BETWEEN :from AND :to
         GROUP BY c.id, c.name
-        ORDER BY sum(t.amount) DESC
+        ORDER BY sum(t.amountKzt) DESC
         """,
     )
     fun sumByCategory(

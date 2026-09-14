@@ -5,6 +5,7 @@ import com.familyfinance.crm.domain.AccountType
 import com.familyfinance.crm.domain.BaseEntity
 import com.familyfinance.crm.domain.Budget
 import com.familyfinance.crm.domain.BudgetPeriod
+import com.familyfinance.crm.domain.BudgetVersion
 import com.familyfinance.crm.domain.Category
 import com.familyfinance.crm.domain.CategoryKind
 import com.familyfinance.crm.domain.Goal
@@ -14,7 +15,9 @@ import com.familyfinance.crm.domain.User
 import com.familyfinance.crm.domain.UserRole
 import java.math.BigDecimal
 import java.time.Clock
+import java.time.Instant
 import java.time.LocalDate
+import java.time.YearMonth
 import java.time.ZoneId
 import java.util.UUID
 
@@ -38,6 +41,7 @@ fun user(
         displayName = "Owner",
         passwordHash = "hashed",
         role = role,
+        passwordChangedAt = Instant.parse("2026-01-01T00:00:00Z"),
     ).withId(id)
 
 fun account(
@@ -72,16 +76,28 @@ fun category(
 fun budget(
     owner: User,
     category: Category,
-    limitAmount: String = "50000",
-    alertThresholdPercent: Int? = 80,
     id: UUID = UUID.randomUUID(),
 ): Budget =
     Budget(
         owner = owner,
         category = category,
-        limitAmount = BigDecimal(limitAmount),
         period = BudgetPeriod.MONTHLY,
+    ).withId(id)
+
+fun budgetVersion(
+    budget: Budget,
+    limitAmount: String = "50000",
+    alertThresholdPercent: Int? = 80,
+    effectiveFromMonth: YearMonth = YearMonth.of(2026, 9),
+    effectiveToMonth: YearMonth? = null,
+    id: UUID = UUID.randomUUID(),
+): BudgetVersion =
+    BudgetVersion(
+        budget = budget,
+        limitAmount = BigDecimal(limitAmount),
         alertThresholdPercent = alertThresholdPercent,
+        effectiveFromMonth = effectiveFromMonth.atDay(1),
+        effectiveToMonth = effectiveToMonth?.atDay(1),
     ).withId(id)
 
 fun goal(

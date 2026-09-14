@@ -78,18 +78,18 @@ entities below: every entity in every phase doc from here on needs it too.
 Implications, so nothing gets missed when this is built:
 - Every `DELETE` endpoint becomes an update (`isDeleted = true`), not a row removal.
 - Every list/get query must exclude `isDeleted = true` by default — recommend Hibernate's `@SQLRestriction("is_deleted = false")` on each entity so this is automatic rather than repeated per-query.
-- **⚠ Exception — do NOT put `@SQLRestriction` on `Category`.** Historical transactions keep pointing at a soft-deleted category (see the validation rules below), and `@SQLRestriction` applies to relationship loading too: `transaction.category` would silently resolve to `null` for any deleted category, corrupting old records in every response and summary. Filter deleted categories in the `/api/v1/categories` list query explicitly instead.
+- **⚠ Exception — do NOT put `@SQLRestriction` on `Category`.** Historical transactions keep pointing at a soft-deleted category (see the validation rules below), and `@SQLRestriction` applies to relationship loading too: `transaction.category` would silently resolve to `null` for any deleted category, corrupting old records in every response and summary. Filter deleted categories in the `/api/v1/categories` list query explicitly instead. The same reasoning applies to `Account` (transactions reference soft-deleted accounts, and `transaction.account` is non-null) and to `Budget` (deleting one closes its version but past months must still report it) — all three filter `isDeleted` explicitly in their own queries.
 - Any "must be unique" constraint (e.g. `User.email`, `Budget`'s `(owner_id, category_id)`) needs a **partial** unique index (`WHERE is_deleted = false`), not a plain `UNIQUE` constraint — otherwise a soft-deleted row permanently blocks reusing that value.
 - The existing "block delete if still referenced" rules (e.g. `Category` referenced by a `Budget`) now mean: block **soft**-deleting the parent while a non-deleted child still references it.
 
-- **User** — `id, email, displayName, passwordHash, role (OWNER/MEMBER), isDeleted, createdAt, updatedAt`. **Exactly one `OWNER` exists**, created by the bootstrap step; the user-creation endpoint can only make `MEMBER`. **`VIEWER` was removed** — it was never enforced anywhere, and an unenforced read-only role is worse than none (it implies a restriction that doesn't exist).
+- **User** — `id, email, displayName, passwordHash, passwordChangedAt, role (OWNER/MEMBER), isDeleted, createdAt, updatedAt`. **Exactly one `OWNER` exists**, created by the bootstrap step; the user-creation endpoint can only make `MEMBER`. **`VIEWER` was removed** — it was never enforced anywhere, and an unenforced read-only role is worse than none (it implies a restriction that doesn't exist).
   - **In practice this is a single-user system today.** The per-user ownership structure (`owner: User` on every entity, the user-creation endpoint, `MEMBER`) is kept deliberately anyway: it costs nothing while unused, and retrofitting per-user scoping onto an existing dataset is genuinely painful. `MEMBER` currently behaves identically to `OWNER` except for not being able to create users.
 - **Bank** — `id, name, createdAt, updatedAt, isDeleted`. A lookup/reference entity — real-world banks ("Halyk Bank", "Kaspi Bank", etc.), not personal to one family member. **Confirmed shared/global, not per-user** — unlike `Category`, which was deliberately made per-user. Self-service find-or-create: any family member can add a new `Bank` by name when setting up an account if it isn't already in the list, rather than this being admin-provisioned. Constraint: unique on `name` **where `is_deleted = false`** (same partial-index pattern as everywhere else soft delete meets uniqueness).
 - **Account** — any place money sits: `id, owner, bank, name, type (CASH/BANK/DEPOSIT/BROKER), balance, currency, isDeleted, createdAt, updatedAt`. **`Account.balance` always means money you *have*** — there is no account type where it means money owed. **`CARD`, `LOAN`, and `MORTGAGE` were removed** — a debit card is just a `BANK` account, credit-card debt isn't tracked, and loans/mortgages aren't modelled as entities at all: they're paid via ordinary `EXPENSE` transactions against a user-created "Loan"/"Mortgage" category. `bank: Bank` FK is **nullable** — a `CASH` account has no bank. **Confirmed single-owner** — joint/shared accounts were considered and explicitly rejected; every account belongs to exactly one `User`. Don't revisit this without a real need. `DEPOSIT` (a fixed-term deposit) behaves like `BANK` for now — a plain balance; add interest-rate/maturity fields later only if term-deposit specifics turn out to matter.
 - **Category** — `id, name, owner, parent (self-referencing, for a simple hierarchy), kind (EXPENSE/INCOME), isDeleted, createdAt, updatedAt`. **Categories are per family member**, not a shared household taxonomy — each `Category` gets an `owner: User` FK, same pattern as `Account`. Two family members can each have their own "Groceries" category as separate rows; nothing is deduplicated across users. Both `Account` and `Category` are entirely self-service — each family member creates their own directly in the CRM; nothing is admin-provisioned or auto-seeded.
   - `Budget.category` and `Transaction.category` must belong to the *same owner* as the budget/transaction itself — enforce this ownership check alongside the existing account-ownership checks (`AccountService.getOwnedBy`-style pattern) in every service that touches `Category`.
   - A self-referencing `parent` must also belong to the same owner as its child — enforce in the service layer when creating/updating a category, not just at the DB level.
-- **Transaction** — `id, type (INCOME/EXPENSE/TRANSFER/ADJUSTMENT), amount (BigDecimal/NUMERIC(19,4)), currency, toAmount (BigDecimal?, TRANSFER only), occurredOn, account, toAccount (TRANSFER only), category, note, isDeleted, createdAt, updatedAt`. **`toAmount` handles cross-currency transfers** — see the convention below. **Removed: `isRecurring`, `recurrenceInterval`** — not needed. Ownership is implied transitively through `account.owner`, which is safe given accounts are single-owner.
+- **Transaction** — `id, type (INCOME/EXPENSE/TRANSFER/ADJUSTMENT), amount (BigDecimal/NUMERIC(19,4)), currency, exchangeRate (NUMERIC(19,6)), amountKzt (NUMERIC(19,4)), toAmount (BigDecimal?, TRANSFER only), occurredOn, account, toAccount (TRANSFER only), category, note, isDeleted, createdAt, updatedAt`. **`toAmount` handles cross-currency transfers** — see the convention below. **Removed: `isRecurring`, `recurrenceInterval`** — not needed. Ownership is implied transitively through `account.owner`, which is safe given accounts are single-owner.
 
 ## Design Decisions & Conventions (already made — don't re-litigate these)
 
@@ -102,17 +102,31 @@ Implications, so nothing gets missed when this is built:
   was a bug caught and fixed in Phase 0/1; don't reintroduce an
   account-id-only filter.
 - **Money** is always `BigDecimal` / `NUMERIC(19,4)`, never floating point.
-- **Currency** is a plain 3-letter code column for now (default `KZT`), no
-  conversion logic yet — fine until Phase 5 mixes currencies in one portfolio.
+- **KZT is the single accounting currency.** An `Account` may hold any
+  currency and its `balance` stays in that currency, but every number the
+  reporting endpoints add up is KZT. `Transaction` carries `exchangeRate`
+  (KZT per 1 unit of its `currency`, supplied by hand — no rate source is
+  stored or fetched) and `amountKzt`; **every aggregation sums `amountKzt`,
+  never `amount`**, so a total can never be a mix of currencies added
+  together. The rate is required when the account is not in KZT and must be
+  absent or `1` when it is. A rate can be corrected via `PATCH`, which
+  re-derives `amountKzt`.
+  - Converting a *balance* would need a current rate, which is deliberately
+    not stored — so `GET /accounts` shows each balance in its own currency
+    with no combined total, and `Goal.targetAmount` is denominated in its
+    linked account's currency. A cross-currency total is Phase 6's problem.
 - **IDs** are UUIDs, generated by Hibernate (`GenerationType.UUID`).
 - **Auth is JWT**, not HTTP Basic (the Phase 0/1 code still uses Basic and
   needs migrating). **Single long-lived token, 30-day expiry, no refresh
   token** — at 2–5 users on a home network, refresh-token rotation is
   ceremony without benefit; on expiry you simply log in again. Signing secret
   comes from an environment variable, never committed. There's no server-side
-  token store, so **logout is client-side only** (drop the token) and a token
-  can't be revoked before it expires — acceptable at this scale, but worth
-  knowing rather than discovering later.
+  token store, so **logout is client-side only** (drop the token). The one
+  revocation that exists is `User.passwordChangedAt`: the JWT filter rejects
+  any token issued before it, so changing a password logs every other session
+  out. Without that, a leaked token would stay valid for its full 30 days with
+  nothing you could do — which is precisely the situation a password change is
+  a response to.
 - **Timezone: `Asia/Almaty`, fixed** — set as a config property
   (`app.timezone`), not per-user and not UTC. Everything date-dependent
   resolves against it: the default `occurredOn` for a new transaction, the

@@ -1,6 +1,7 @@
 package com.familyfinance.crm.repository
 
 import com.familyfinance.crm.domain.Goal
+import com.familyfinance.crm.domain.GoalStatus
 import com.familyfinance.crm.domain.User
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Query
@@ -29,9 +30,18 @@ interface GoalRepository : JpaRepository<Goal, UUID> {
     fun findDetailedById(id: UUID): Goal?
 
     /**
-     * Whether a live goal still points at this account — the check that blocks
-     * soft-deleting it.
+     * Whether an **active** goal still points at this account — the check that
+     * blocks soft-deleting it. Abandoned and archived goals are kept for the
+     * record and deliberately do not block.
      */
-    @Query("SELECT count(g) > 0 FROM Goal g WHERE g.linkedAccount.id = :accountId")
-    fun existsForAccountId(accountId: UUID): Boolean
+    @Query(
+        """
+        SELECT count(g) > 0 FROM Goal g
+        WHERE g.linkedAccount.id = :accountId AND g.status = :status
+        """,
+    )
+    fun existsActiveForAccountId(
+        accountId: UUID,
+        status: GoalStatus = GoalStatus.ACTIVE,
+    ): Boolean
 }

@@ -65,8 +65,11 @@ class JwtService(
     private fun toPrincipal(claims: Claims): AuthenticatedUser? {
         val id = claims.subject?.let { runCatching { UUID.fromString(it) }.getOrNull() } ?: return null
         val email = claims[EMAIL_CLAIM] as? String ?: return null
+        val issuedAt = claims.issuedAt?.toInstant() ?: return null
         val role = (claims[ROLE_CLAIM] as? String)?.let { name -> UserRole.entries.find { it.name == name } }
-        return role?.let { AuthenticatedUser(id = id, email = email, role = it) }
+        return role?.let {
+            AuthenticatedUser(id = id, email = email, role = it, issuedAt = issuedAt)
+        }
     }
 
     data class IssuedToken(

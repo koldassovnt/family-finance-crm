@@ -33,4 +33,11 @@ interface CategoryService {
         id: UUID,
         owner: User,
     )
+
+    /**
+     * Maps each of this owner's categories to itself plus every descendant, to
+     * arbitrary depth. Budgets use it to roll sub-category spending up into the
+     * parent's usage. Built once per request rather than walked per budget.
+     */
+    fun descendantIndex(owner: User): Map<UUID, Set<UUID>>
 }

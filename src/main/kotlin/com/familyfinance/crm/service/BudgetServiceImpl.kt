@@ -1,14 +1,19 @@
 package com.familyfinance.crm.service
 
 import com.familyfinance.crm.domain.Budget
+import com.familyfinance.crm.domain.BudgetVersion
+import com.familyfinance.crm.domain.Category
+import com.familyfinance.crm.domain.CategoryKind
 import com.familyfinance.crm.domain.TransactionType
 import com.familyfinance.crm.domain.User
 import com.familyfinance.crm.dto.CreateBudgetRequest
 import com.familyfinance.crm.dto.UpdateBudgetRequest
+import com.familyfinance.crm.exception.ConflictException
 import com.familyfinance.crm.exception.DuplicateBudgetException
 import com.familyfinance.crm.exception.NotFoundException
 import com.familyfinance.crm.exception.invalidField
 import com.familyfinance.crm.repository.BudgetRepository
+import com.familyfinance.crm.repository.BudgetVersionRepository
 import com.familyfinance.crm.repository.TransactionRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -21,23 +26,33 @@ import java.util.UUID
 @Service
 class BudgetServiceImpl(
     private val budgetRepository: BudgetRepository,
+    private val budgetVersionRepository: BudgetVersionRepository,
     private val transactionRepository: TransactionRepository,
     private val categoryService: CategoryService,
     private val clock: Clock,
 ) : BudgetService {
     @Transactional(readOnly = true)
-    override fun list(owner: User): List<BudgetWithUsage> {
-        val budgets = budgetRepository.findAllByOwner(owner)
-        if (budgets.isEmpty()) return emptyList()
-        val month = currentMonth()
+    override fun list(
+        owner: User,
+        month: YearMonth,
+    ): List<BudgetWithUsage> {
+        val versions = budgetVersionRepository.findInForce(owner, month.atDay(1))
+        if (versions.isEmpty()) return emptyList()
         val range = monthRange(month)
-        // One aggregate for the whole month rather than a query per budget.
+        // One aggregate for the whole month, then rolled up per budget in memory,
+        // rather than a query per budget.
         val spentByCategory =
             transactionRepository
                 .sumByCategory(owner, TransactionType.EXPENSE, range.from, range.to)
                 .associate { it.categoryId to it.total }
-        return budgets.map { budget ->
-            withUsage(budget, month, spentByCategory[budget.category.id] ?: BigDecimal.ZERO)
+        val descendants = categoryService.descendantIndex(owner)
+        return versions.map { version ->
+            val categoryIds = descendantsOf(version.budget.category, descendants)
+            val spent =
+                categoryIds.fold(BigDecimal.ZERO) { total, categoryId ->
+                    total + (spentByCategory[categoryId] ?: BigDecimal.ZERO)
+                }
+            withUsage(version, month, spent)
         }
     }
 
@@ -47,23 +62,31 @@ class BudgetServiceImpl(
         request: CreateBudgetRequest,
     ): BudgetWithUsage {
         val categoryId = request.categoryId ?: throw invalidField("categoryId", "is required")
-        val limitAmount = request.limitAmount ?: throw invalidField("limitAmount", "is required")
-        if (limitAmount.signum() <= 0) throw invalidField("limitAmount", "must be greater than zero")
+        val limitAmount = requirePositiveLimit(request.limitAmount)
         val category = categoryService.getOwnedBy(categoryId, owner)
-        if (budgetRepository.existsForCategory(owner, categoryId)) {
+        if (category.kind != CategoryKind.EXPENSE) {
+            // Usage only ever counts EXPENSE transactions, so an income budget
+            // could never read anything but zero.
+            throw invalidField("categoryId", "must be an EXPENSE category")
+        }
+        if (budgetRepository.existsActiveForCategory(owner, categoryId)) {
             throw DuplicateBudgetException("A budget for category ${category.name} already exists")
         }
-        val saved =
+        val budget =
             budgetRepository.save(
-                Budget(
-                    owner = owner,
-                    category = category,
+                Budget(owner = owner, category = category, period = request.period),
+            )
+        val version =
+            budgetVersionRepository.save(
+                BudgetVersion(
+                    budget = budget,
                     limitAmount = limitAmount,
-                    period = request.period,
-                    alertThresholdPercent = request.alertThresholdPercent,
+                    alertThresholdPercent = request.alertThresholdPercent?.also(::validateThreshold),
+                    effectiveFromMonth = currentMonth().atDay(1),
+                    effectiveToMonth = null,
                 ),
             )
-        return usageFor(saved, owner)
+        return usageFor(version, owner)
     }
 
     @Transactional
@@ -73,14 +96,42 @@ class BudgetServiceImpl(
         request: UpdateBudgetRequest,
     ): BudgetWithUsage {
         val budget = getOwnedBy(id, owner)
-        request.limitAmount?.let { limitAmount ->
-            if (limitAmount.signum() <= 0) throw invalidField("limitAmount", "must be greater than zero")
-            budget.limitAmount = limitAmount
-        }
-        request.alertThresholdPercent?.let { threshold ->
-            budget.alertThresholdPercent = threshold.orElse(null)?.also(::validateThreshold)
-        }
-        return usageFor(budget, owner)
+        val open = openVersionOf(budget)
+        val month = currentMonth()
+        val limitAmount = request.limitAmount?.let(::requirePositiveLimit) ?: open.limitAmount
+        // An explicit null clears the cue, so this cannot collapse into an elvis
+        // chain: `Optional.empty()` and an absent field both yield null there.
+        val threshold =
+            if (request.alertThresholdPercent == null) {
+                open.alertThresholdPercent
+            } else {
+                request.alertThresholdPercent.orElse(null)?.also(::validateThreshold)
+            }
+
+        val effective =
+            if (open.effectiveFromMonth == month.atDay(1)) {
+                // Still the month this version started in — correct it in place
+                // rather than leaving two versions for one month.
+                open.limitAmount = limitAmount
+                open.alertThresholdPercent = threshold
+                open
+            } else {
+                open.effectiveToMonth = month.minusMonths(1).atDay(1)
+                // Hibernate orders inserts before updates within a flush, so the
+                // close has to reach the database first — otherwise two open
+                // versions exist momentarily and the partial unique index trips.
+                budgetVersionRepository.flush()
+                budgetVersionRepository.save(
+                    BudgetVersion(
+                        budget = budget,
+                        limitAmount = limitAmount,
+                        alertThresholdPercent = threshold,
+                        effectiveFromMonth = month.atDay(1),
+                        effectiveToMonth = null,
+                    ),
+                )
+            }
+        return usageFor(effective, owner)
     }
 
     @Transactional
@@ -88,7 +139,19 @@ class BudgetServiceImpl(
         id: UUID,
         owner: User,
     ) {
-        getOwnedBy(id, owner).isDeleted = true
+        val budget = getOwnedBy(id, owner)
+        val open = budgetVersionRepository.findOpenVersion(checkNotNull(budget.id))
+        val month = currentMonth()
+        when {
+            open == null -> Unit
+
+            // Created and deleted in the same month: it never applied anywhere,
+            // and closing it at last month would invert its range.
+            open.effectiveFromMonth == month.atDay(1) -> open.isDeleted = true
+
+            else -> open.effectiveToMonth = month.minusMonths(1).atDay(1)
+        }
+        budget.isDeleted = true
     }
 
     private fun getOwnedBy(
@@ -96,28 +159,33 @@ class BudgetServiceImpl(
         owner: User,
     ): Budget {
         val budget =
-            budgetRepository.findDetailedById(id)
+            budgetRepository.findActiveById(id)
                 ?: throw NotFoundException("Budget $id was not found")
         if (budget.owner != owner) throw NotFoundException("Budget $id was not found")
         return budget
     }
 
+    private fun openVersionOf(budget: Budget): BudgetVersion =
+        budgetVersionRepository.findOpenVersion(checkNotNull(budget.id))
+            ?: throw ConflictException("Budget ${budget.id} has no version in force")
+
     private fun usageFor(
-        budget: Budget,
+        version: BudgetVersion,
         owner: User,
     ): BudgetWithUsage {
         val month = currentMonth()
         val range = monthRange(month)
-        val categoryId = checkNotNull(budget.category.id) { "A persisted budget has a persisted category" }
+        val categoryIds =
+            descendantsOf(version.budget.category, categoryService.descendantIndex(owner))
         val spent =
-            transactionRepository.sumByTypeAndCategory(
+            transactionRepository.sumByTypeAndCategories(
                 owner = owner,
                 type = TransactionType.EXPENSE,
-                categoryId = categoryId,
+                categoryIds = categoryIds,
                 from = range.from,
                 to = range.to,
             )
-        return withUsage(budget, month, spent)
+        return withUsage(version, month, spent)
     }
 
     /** "Current month" is the calendar month in the app timezone. */
@@ -137,19 +205,35 @@ private const val MIN_THRESHOLD_PERCENT = 1
 private const val MAX_THRESHOLD_PERCENT = 100
 private const val PERCENT_SCALE = 2
 
+private fun requirePositiveLimit(limitAmount: BigDecimal?): BigDecimal {
+    val value = limitAmount ?: throw invalidField("limitAmount", "is required")
+    if (value.signum() <= 0) throw invalidField("limitAmount", "must be greater than zero")
+    return value
+}
+
+/** The category itself plus every descendant — a parent budget caps the group. */
+private fun descendantsOf(
+    category: Category,
+    index: Map<UUID, Set<UUID>>,
+): Set<UUID> {
+    val id = checkNotNull(category.id)
+    return index[id] ?: setOf(id)
+}
+
 private fun withUsage(
-    budget: Budget,
+    version: BudgetVersion,
     month: YearMonth,
     spent: BigDecimal,
 ): BudgetWithUsage =
     BudgetWithUsage(
-        budget = budget,
+        budget = version.budget,
+        version = version,
         month = month,
         spent = spent,
         // Goes negative once the limit is passed; overspend is information.
-        remaining = budget.limitAmount - spent,
+        remaining = version.limitAmount - spent,
         percentUsed =
             spent
                 .multiply(BigDecimal(100))
-                .divide(budget.limitAmount, PERCENT_SCALE, RoundingMode.HALF_UP),
+                .divide(version.limitAmount, PERCENT_SCALE, RoundingMode.HALF_UP),
     )

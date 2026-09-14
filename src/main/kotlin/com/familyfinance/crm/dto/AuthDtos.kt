@@ -44,3 +44,11 @@ data class UserResponse(
     val role: UserRole,
     val createdAt: Instant?,
 )
+
+data class ChangePasswordRequest(
+    @field:NotBlank(message = "must not be blank")
+    val currentPassword: String,
+    @field:NotBlank(message = "must not be blank")
+    @field:Size(min = 8, max = 128, message = "must be between 8 and 128 characters")
+    val newPassword: String,
+)

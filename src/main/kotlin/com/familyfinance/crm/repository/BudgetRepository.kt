@@ -6,39 +6,30 @@ import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Query
 import java.util.UUID
 
+/**
+ * `Budget` deliberately carries no `@SQLRestriction` (see [Budget]), so every
+ * query here filters `isDeleted` explicitly.
+ */
 interface BudgetRepository : JpaRepository<Budget, UUID> {
     @Query(
         """
         SELECT b FROM Budget b
         JOIN FETCH b.category c
         LEFT JOIN FETCH c.parent
-        WHERE b.owner = :owner
-        ORDER BY c.name ASC
+        WHERE b.id = :id AND b.isDeleted = false
         """,
     )
-    fun findAllByOwner(owner: User): List<Budget>
+    fun findActiveById(id: UUID): Budget?
 
+    /** Enforces one live budget per category per person before the index does. */
     @Query(
         """
-        SELECT b FROM Budget b
-        JOIN FETCH b.category c
-        LEFT JOIN FETCH c.parent
-        WHERE b.id = :id
+        SELECT count(b) > 0 FROM Budget b
+        WHERE b.owner = :owner AND b.category.id = :categoryId AND b.isDeleted = false
         """,
     )
-    fun findDetailedById(id: UUID): Budget?
-
-    /** Enforces one active budget per category per person before the index does. */
-    @Query("SELECT count(b) > 0 FROM Budget b WHERE b.owner = :owner AND b.category.id = :categoryId")
-    fun existsForCategory(
+    fun existsActiveForCategory(
         owner: User,
         categoryId: UUID,
     ): Boolean
-
-    /**
-     * Whether a live budget still configures this category — the check that
-     * blocks soft-deleting it. An FK can't see `is_deleted`, hence a query.
-     */
-    @Query("SELECT count(b) > 0 FROM Budget b WHERE b.category.id = :categoryId")
-    fun existsForCategoryId(categoryId: UUID): Boolean
 }

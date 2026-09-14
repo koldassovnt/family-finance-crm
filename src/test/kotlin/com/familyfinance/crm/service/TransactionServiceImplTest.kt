@@ -98,6 +98,7 @@ class TransactionServiceImplTest {
                 source.idValue,
                 toAccountId = destination.id,
                 toAmount = BigDecimal("48000"),
+                exchangeRate = BigDecimal("480"),
             ),
         )
 
@@ -113,7 +114,16 @@ class TransactionServiceImplTest {
         every { accountService.getOwnedBy(destination.idValue, owner) } returns destination
 
         assertThrows<CurrencyMismatchException> {
-            service.create(owner, request(TransactionType.TRANSFER, "100", source.idValue, toAccountId = destination.id))
+            service.create(
+                owner,
+                request(
+                    TransactionType.TRANSFER,
+                    "100",
+                    source.idValue,
+                    toAccountId = destination.id,
+                    exchangeRate = BigDecimal("480"),
+                ),
+            )
         }
     }
 
@@ -190,6 +200,83 @@ class TransactionServiceImplTest {
     }
 
     @Test
+    fun `converts a foreign expense to KZT at the supplied rate`() {
+        val usd = account(owner, balance = "1000", currency = "USD")
+        every { accountService.getOwnedBy(usd.idValue, owner) } returns usd
+
+        val transaction =
+            service.create(
+                owner,
+                request(TransactionType.EXPENSE, "15", usd.idValue, exchangeRate = BigDecimal("480")),
+            )
+
+        assertEquals(BigDecimal("15"), transaction.amount)
+        assertEquals("USD", transaction.currency)
+        assertEquals(BigDecimal("7200.0000"), transaction.amountKzt)
+        assertEquals(BigDecimal("985"), usd.balance)
+    }
+
+    @Test
+    fun `requires a rate for a foreign-currency account`() {
+        val usd = account(owner, currency = "USD")
+        every { accountService.getOwnedBy(usd.idValue, owner) } returns usd
+
+        val error =
+            assertThrows<ValidationException> {
+                service.create(owner, request(TransactionType.EXPENSE, "15", usd.idValue))
+            }
+
+        assertEquals(setOf("exchangeRate"), error.fieldErrors.keys)
+    }
+
+    @Test
+    fun `defaults the rate to 1 for a KZT account`() {
+        val account = account(owner, balance = "100")
+        every { accountService.getOwnedBy(account.idValue, owner) } returns account
+
+        val transaction = service.create(owner, request(TransactionType.EXPENSE, "30", account.idValue))
+
+        assertEquals(BigDecimal.ONE, transaction.exchangeRate)
+        assertEquals(BigDecimal("30.0000"), transaction.amountKzt)
+    }
+
+    @Test
+    fun `rejects a rate other than 1 on a KZT account`() {
+        val account = account(owner)
+        every { accountService.getOwnedBy(account.idValue, owner) } returns account
+
+        assertThrows<ValidationException> {
+            service.create(
+                owner,
+                request(TransactionType.EXPENSE, "30", account.idValue, exchangeRate = BigDecimal("480")),
+            )
+        }
+    }
+
+    @Test
+    fun `correcting a mistyped rate re-derives the KZT figure`() {
+        val usd = account(owner, balance = "1000", currency = "USD")
+        every { accountService.getOwnedBy(usd.idValue, owner) } returns usd
+        val transaction =
+            service.create(
+                owner,
+                request(TransactionType.EXPENSE, "15", usd.idValue, exchangeRate = BigDecimal("48")),
+            )
+        every { transactionRepository.findDetailedById(transaction.idValue) } returns transaction
+
+        val updated =
+            service.update(
+                transaction.idValue,
+                owner,
+                UpdateTransactionRequest(exchangeRate = BigDecimal("480")),
+            )
+
+        assertEquals(BigDecimal("7200.0000"), updated.amountKzt)
+        // The account is in USD, so its balance never moved.
+        assertEquals(BigDecimal("985"), usd.balance)
+    }
+
+    @Test
     fun `deleting an expense restores the balance it removed`() {
         val account = account(owner, balance = "100")
         every { accountService.getOwnedBy(account.idValue, owner) } returns account
@@ -217,6 +304,7 @@ class TransactionServiceImplTest {
                     source.idValue,
                     toAccountId = destination.id,
                     toAmount = BigDecimal("48000"),
+                    exchangeRate = BigDecimal("480"),
                 ),
             )
         every { transactionRepository.findDetailedById(transaction.idValue) } returns transaction
@@ -275,6 +363,7 @@ class TransactionServiceImplTest {
         toAmount: BigDecimal? = null,
         categoryId: UUID? = null,
         occurredOn: LocalDate? = null,
+        exchangeRate: BigDecimal? = null,
     ) = CreateTransactionRequest(
         type = type,
         amount = BigDecimal(amount),
@@ -283,5 +372,6 @@ class TransactionServiceImplTest {
         toAmount = toAmount,
         categoryId = categoryId,
         occurredOn = occurredOn,
+        exchangeRate = exchangeRate,
     )
 }

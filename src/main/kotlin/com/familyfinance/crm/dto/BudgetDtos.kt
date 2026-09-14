@@ -41,6 +41,10 @@ data class BudgetResponse(
     val alertThresholdPercent: Int?,
     /** The month usage was computed for, in the app timezone. */
     val month: String,
+    /** First month this version of the limit applied to. */
+    val effectiveFrom: String,
+    /** Last month it applied to; null while it is still in force. */
+    val effectiveTo: String?,
     val spent: BigDecimal,
     /** Negative once the limit is exceeded — overspend is a thing to show, not to hide. */
     val remaining: BigDecimal,

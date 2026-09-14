@@ -1,8 +1,11 @@
 package com.familyfinance.crm.service
 
 import com.familyfinance.crm.budget
+import com.familyfinance.crm.budgetVersion
 import com.familyfinance.crm.category
 import com.familyfinance.crm.domain.Budget
+import com.familyfinance.crm.domain.BudgetVersion
+import com.familyfinance.crm.domain.CategoryKind
 import com.familyfinance.crm.domain.TransactionType
 import com.familyfinance.crm.dto.CreateBudgetRequest
 import com.familyfinance.crm.dto.UpdateBudgetRequest
@@ -12,6 +15,7 @@ import com.familyfinance.crm.exception.ValidationException
 import com.familyfinance.crm.fixedClock
 import com.familyfinance.crm.idValue
 import com.familyfinance.crm.repository.BudgetRepository
+import com.familyfinance.crm.repository.BudgetVersionRepository
 import com.familyfinance.crm.repository.CategoryTotal
 import com.familyfinance.crm.repository.TransactionRepository
 import com.familyfinance.crm.user
@@ -22,6 +26,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import java.math.BigDecimal
 import java.time.LocalDate
+import java.time.YearMonth
 import java.util.Optional
 import java.util.UUID
 import kotlin.test.assertEquals
@@ -30,11 +35,13 @@ import kotlin.test.assertTrue
 
 class BudgetServiceImplTest {
     private val budgetRepository = mockk<BudgetRepository>()
+    private val budgetVersionRepository = mockk<BudgetVersionRepository>()
     private val transactionRepository = mockk<TransactionRepository>()
     private val categoryService = mockk<CategoryService>()
     private val service =
         BudgetServiceImpl(
             budgetRepository = budgetRepository,
+            budgetVersionRepository = budgetVersionRepository,
             transactionRepository = transactionRepository,
             categoryService = categoryService,
             clock = fixedClock(LocalDate.of(2026, 9, 10)),
@@ -42,23 +49,31 @@ class BudgetServiceImplTest {
 
     private val owner = user()
     private val groceries = category(owner)
+    private val september = YearMonth.of(2026, 9)
 
     init {
         every { budgetRepository.save(any<Budget>()) } answers { firstArg<Budget>().withId() }
-        every { budgetRepository.existsForCategory(any(), any()) } returns false
-        every { categoryService.getOwnedBy(groceries.idValue, owner) } returns groceries
         every {
-            transactionRepository.sumByTypeAndCategory(any(), any(), any(), any(), any())
+            budgetVersionRepository.save(any<BudgetVersion>())
+        } answers { firstArg<BudgetVersion>().withId() }
+        every { budgetRepository.existsActiveForCategory(any(), any()) } returns false
+        // Closing the old version must be flushed before the new one is inserted.
+        every { budgetVersionRepository.flush() } returns Unit
+        every { categoryService.getOwnedBy(groceries.idValue, owner) } returns groceries
+        every { categoryService.descendantIndex(owner) } returns
+            mapOf(groceries.idValue to setOf(groceries.idValue))
+        every {
+            transactionRepository.sumByTypeAndCategories(any(), any(), any(), any(), any())
         } returns BigDecimal.ZERO
     }
 
     @Test
     fun `computes usage against the current month in the app timezone`() {
         every {
-            transactionRepository.sumByTypeAndCategory(
+            transactionRepository.sumByTypeAndCategories(
                 owner,
                 TransactionType.EXPENSE,
-                groceries.idValue,
+                setOf(groceries.idValue),
                 LocalDate.of(2026, 9, 1),
                 LocalDate.of(2026, 9, 30),
             )
@@ -73,9 +88,17 @@ class BudgetServiceImplTest {
     }
 
     @Test
+    fun `starts the first version in the current month`() {
+        val created = service.create(owner, request())
+
+        assertEquals(september.atDay(1), created.version.effectiveFromMonth)
+        assertNull(created.version.effectiveToMonth)
+    }
+
+    @Test
     fun `reports overspend as a negative remainder and a percentage past 100`() {
         every {
-            transactionRepository.sumByTypeAndCategory(any(), any(), any(), any(), any())
+            transactionRepository.sumByTypeAndCategories(any(), any(), any(), any(), any())
         } returns BigDecimal("60000")
 
         val created = service.create(owner, request())
@@ -85,8 +108,21 @@ class BudgetServiceImplTest {
     }
 
     @Test
+    fun `rejects a budget on an INCOME category`() {
+        val salary = category(owner, kind = CategoryKind.INCOME)
+        every { categoryService.getOwnedBy(salary.idValue, owner) } returns salary
+
+        val error =
+            assertThrows<ValidationException> {
+                service.create(owner, request().copy(categoryId = salary.idValue))
+            }
+
+        assertEquals(setOf("categoryId"), error.fieldErrors.keys)
+    }
+
+    @Test
     fun `rejects a second budget for the same category`() {
-        every { budgetRepository.existsForCategory(owner, groceries.idValue) } returns true
+        every { budgetRepository.existsActiveForCategory(owner, groceries.idValue) } returns true
 
         assertThrows<DuplicateBudgetException> { service.create(owner, request()) }
     }
@@ -97,62 +133,16 @@ class BudgetServiceImplTest {
     }
 
     @Test
-    fun `rejects an out-of-range alert threshold on update`() {
+    fun `rolls sub-category spending up into the parent budget`() {
+        val fruit = category(owner, parent = groceries)
         val subject = budget(owner, groceries)
-        every { budgetRepository.findDetailedById(subject.idValue) } returns subject
-
-        assertThrows<ValidationException> {
-            service.update(subject.idValue, owner, UpdateBudgetRequest(alertThresholdPercent = Optional.of(101)))
-        }
-    }
-
-    @Test
-    fun `clears the alert threshold when it is explicitly null`() {
-        val subject = budget(owner, groceries)
-        every { budgetRepository.findDetailedById(subject.idValue) } returns subject
-
-        val updated =
-            service.update(subject.idValue, owner, UpdateBudgetRequest(alertThresholdPercent = Optional.empty()))
-
-        assertNull(updated.budget.alertThresholdPercent)
-    }
-
-    @Test
-    fun `leaves the alert threshold alone when it is absent`() {
-        val subject = budget(owner, groceries, alertThresholdPercent = 80)
-        every { budgetRepository.findDetailedById(subject.idValue) } returns subject
-
-        val updated =
-            service.update(subject.idValue, owner, UpdateBudgetRequest(limitAmount = BigDecimal("70000")))
-
-        assertEquals(80, updated.budget.alertThresholdPercent)
-        assertEquals(BigDecimal("70000"), updated.budget.limitAmount)
-    }
-
-    @Test
-    fun `returns 404 for a budget owned by someone else`() {
-        val theirs = budget(user(email = "other@example.com"), groceries)
-        every { budgetRepository.findDetailedById(theirs.idValue) } returns theirs
-
-        assertThrows<NotFoundException> {
-            service.update(theirs.idValue, owner, UpdateBudgetRequest(limitAmount = BigDecimal("1")))
-        }
-    }
-
-    @Test
-    fun `soft deletes rather than removing the row`() {
-        val subject = budget(owner, groceries)
-        every { budgetRepository.findDetailedById(subject.idValue) } returns subject
-
-        service.softDelete(subject.idValue, owner)
-
-        assertTrue(subject.isDeleted)
-    }
-
-    @Test
-    fun `lists budgets from a single month-wide aggregation`() {
-        val subject = budget(owner, groceries)
-        every { budgetRepository.findAllByOwner(owner) } returns listOf(subject)
+        val version = budgetVersion(subject)
+        every { budgetVersionRepository.findInForce(owner, september.atDay(1)) } returns listOf(version)
+        every { categoryService.descendantIndex(owner) } returns
+            mapOf(
+                groceries.idValue to setOf(groceries.idValue, fruit.idValue),
+                fruit.idValue to setOf(fruit.idValue),
+            )
         every {
             transactionRepository.sumByCategory(
                 owner,
@@ -160,24 +150,138 @@ class BudgetServiceImplTest {
                 LocalDate.of(2026, 9, 1),
                 LocalDate.of(2026, 9, 30),
             )
-        } returns listOf(categoryTotal(groceries.idValue, BigDecimal("12500")))
+        } returns
+            listOf(
+                categoryTotal(groceries.idValue, BigDecimal("10000")),
+                categoryTotal(fruit.idValue, BigDecimal("2500")),
+            )
 
-        val listed = service.list(owner)
+        val listed = service.list(owner, september)
 
         assertEquals(BigDecimal("12500"), listed.single().spent)
         assertEquals(BigDecimal("25.00"), listed.single().percentUsed)
     }
 
     @Test
-    fun `reports zero usage for a category with no spending this month`() {
+    fun `editing a limit in the month it started corrects that version in place`() {
         val subject = budget(owner, groceries)
-        every { budgetRepository.findAllByOwner(owner) } returns listOf(subject)
-        every { transactionRepository.sumByCategory(any(), any(), any(), any()) } returns emptyList()
+        val version = budgetVersion(subject, effectiveFromMonth = september)
+        every { budgetRepository.findActiveById(subject.idValue) } returns subject
+        every { budgetVersionRepository.findOpenVersion(subject.idValue) } returns version
 
-        val listed = service.list(owner)
+        val updated =
+            service.update(subject.idValue, owner, UpdateBudgetRequest(limitAmount = BigDecimal("70000")))
 
-        assertEquals(BigDecimal.ZERO, listed.single().spent)
-        assertEquals(BigDecimal("0.00"), listed.single().percentUsed)
+        assertEquals(version.idValue, updated.version.idValue)
+        assertEquals(BigDecimal("70000"), updated.version.limitAmount)
+        assertNull(updated.version.effectiveToMonth)
+    }
+
+    @Test
+    fun `editing a limit from an earlier month opens a new version from this month`() {
+        val subject = budget(owner, groceries)
+        val version = budgetVersion(subject, effectiveFromMonth = YearMonth.of(2026, 7))
+        every { budgetRepository.findActiveById(subject.idValue) } returns subject
+        every { budgetVersionRepository.findOpenVersion(subject.idValue) } returns version
+
+        val updated =
+            service.update(subject.idValue, owner, UpdateBudgetRequest(limitAmount = BigDecimal("70000")))
+
+        // The old version now ends in August; the new one starts in September.
+        assertEquals(YearMonth.of(2026, 8).atDay(1), version.effectiveToMonth)
+        assertEquals(september.atDay(1), updated.version.effectiveFromMonth)
+        assertEquals(BigDecimal("70000"), updated.version.limitAmount)
+        assertEquals(BigDecimal("50000"), version.limitAmount)
+    }
+
+    @Test
+    fun `a new version carries forward whatever the request left out`() {
+        val subject = budget(owner, groceries)
+        val version =
+            budgetVersion(subject, effectiveFromMonth = YearMonth.of(2026, 7), alertThresholdPercent = 80)
+        every { budgetRepository.findActiveById(subject.idValue) } returns subject
+        every { budgetVersionRepository.findOpenVersion(subject.idValue) } returns version
+
+        val updated =
+            service.update(subject.idValue, owner, UpdateBudgetRequest(limitAmount = BigDecimal("70000")))
+
+        assertEquals(80, updated.version.alertThresholdPercent)
+    }
+
+    @Test
+    fun `clears the alert threshold when it is explicitly null`() {
+        val subject = budget(owner, groceries)
+        val version = budgetVersion(subject, effectiveFromMonth = september)
+        every { budgetRepository.findActiveById(subject.idValue) } returns subject
+        every { budgetVersionRepository.findOpenVersion(subject.idValue) } returns version
+
+        val updated =
+            service.update(
+                subject.idValue,
+                owner,
+                UpdateBudgetRequest(alertThresholdPercent = Optional.empty()),
+            )
+
+        assertNull(updated.version.alertThresholdPercent)
+    }
+
+    @Test
+    fun `rejects an out-of-range alert threshold`() {
+        val subject = budget(owner, groceries)
+        every { budgetRepository.findActiveById(subject.idValue) } returns subject
+        every { budgetVersionRepository.findOpenVersion(subject.idValue) } returns budgetVersion(subject)
+
+        assertThrows<ValidationException> {
+            service.update(
+                subject.idValue,
+                owner,
+                UpdateBudgetRequest(alertThresholdPercent = Optional.of(101)),
+            )
+        }
+    }
+
+    @Test
+    fun `deleting closes the open version at the end of last month`() {
+        val subject = budget(owner, groceries)
+        val version = budgetVersion(subject, effectiveFromMonth = YearMonth.of(2026, 7))
+        every { budgetRepository.findActiveById(subject.idValue) } returns subject
+        every { budgetVersionRepository.findOpenVersion(subject.idValue) } returns version
+
+        service.softDelete(subject.idValue, owner)
+
+        assertEquals(YearMonth.of(2026, 8).atDay(1), version.effectiveToMonth)
+        assertTrue(subject.isDeleted)
+    }
+
+    @Test
+    fun `deleting in the month it started drops the version rather than inverting its range`() {
+        val subject = budget(owner, groceries)
+        val version = budgetVersion(subject, effectiveFromMonth = september)
+        every { budgetRepository.findActiveById(subject.idValue) } returns subject
+        every { budgetVersionRepository.findOpenVersion(subject.idValue) } returns version
+
+        service.softDelete(subject.idValue, owner)
+
+        assertTrue(version.isDeleted)
+        assertNull(version.effectiveToMonth)
+        assertTrue(subject.isDeleted)
+    }
+
+    @Test
+    fun `a month before the budget existed simply has no row`() {
+        every { budgetVersionRepository.findInForce(owner, YearMonth.of(2026, 5).atDay(1)) } returns emptyList()
+
+        assertTrue(service.list(owner, YearMonth.of(2026, 5)).isEmpty())
+    }
+
+    @Test
+    fun `returns 404 for a budget owned by someone else`() {
+        val theirs = budget(user(email = "other@example.com"), groceries)
+        every { budgetRepository.findActiveById(theirs.idValue) } returns theirs
+
+        assertThrows<NotFoundException> {
+            service.update(theirs.idValue, owner, UpdateBudgetRequest(limitAmount = BigDecimal("1")))
+        }
     }
 
     private fun request(limitAmount: String = "50000") =
@@ -192,7 +296,7 @@ class BudgetServiceImplTest {
         amount: BigDecimal,
     ) = object : CategoryTotal {
         override val categoryId = id
-        override val categoryName = "Groceries"
+        override val categoryName = "Category"
         override val total = amount
     }
 }

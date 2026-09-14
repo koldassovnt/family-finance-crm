@@ -95,6 +95,19 @@ class GoalServiceImplTest {
     }
 
     @Test
+    fun `an achieved goal can be archived and keeps reporting progress`() {
+        val savings = account(owner, balance = "1000000")
+        val subject = goal(owner, savings, targetAmount = "1000000")
+        every { goalRepository.findDetailedById(subject.idValue) } returns subject
+
+        val updated = service.update(subject.idValue, owner, UpdateGoalRequest(status = GoalStatus.ARCHIVED))
+
+        assertEquals(GoalStatus.ARCHIVED, updated.goal.status)
+        assertTrue(updated.achieved)
+        assertEquals(BigDecimal("100.00"), updated.progressPercent)
+    }
+
+    @Test
     fun `rejects a linked account owned by someone else`() {
         val theirs = account(user(email = "other@example.com"))
         every { accountService.getOwnedBy(theirs.idValue, owner) } throws NotFoundException("nope")

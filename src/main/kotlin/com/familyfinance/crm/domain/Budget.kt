@@ -8,17 +8,19 @@ import jakarta.persistence.FetchType
 import jakarta.persistence.JoinColumn
 import jakarta.persistence.ManyToOne
 import jakarta.persistence.Table
-import org.hibernate.annotations.SQLRestriction
-import java.math.BigDecimal
 
 /**
- * One active budget per category per person. Usage is never stored — it is
- * summed from the current month's `EXPENSE` transactions on every read, so
- * there is no per-month row to roll over.
+ * The stable identity of a budget — one per (owner, category). The limit lives
+ * in [BudgetVersion]s, so it can change without rewriting what past months were
+ * measured against. Usage is never stored; it is summed on read.
+ *
+ * Deliberately has **no** `@SQLRestriction`: deleting a budget closes its open
+ * version but leaves past months intact, and the restriction would hide those
+ * months too. Active budgets are filtered explicitly, as with [Category] and
+ * [Account].
  */
 @Entity
 @Table(name = "budgets")
-@SQLRestriction("is_deleted = false")
 class Budget(
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "owner_id", nullable = false)
@@ -26,15 +28,7 @@ class Budget(
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "category_id", nullable = false)
     var category: Category,
-    @Column(nullable = false, precision = 19, scale = 4)
-    var limitAmount: BigDecimal,
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 16)
     var period: BudgetPeriod,
-    /**
-     * Display cue only — nothing server-side reacts to it. The API returns it
-     * next to computed usage so the UI can colour the progress bar.
-     */
-    @Column
-    var alertThresholdPercent: Int?,
 ) : BaseEntity()
