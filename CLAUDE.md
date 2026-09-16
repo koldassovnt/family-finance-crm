@@ -5,9 +5,11 @@ Project conventions for Claude Code to follow when working in this repository.
 ## Project Context
 
 A single-deployment backend for one family's finances: accounts, categories,
-and a typed transaction ledger, with budgets/goals (Phase 2) and bills
-(Phase 4) still to come. Modular monolith, no external services — it runs as a
-Docker container on a personal machine behind the home network.
+a typed transaction ledger, budgets and goals (Phase 2), and bills (Phase 4).
+Everything in current scope is built. Phases 5 (investments) and 6 (net worth)
+are written up but out of scope — don't start them unless asked. Modular
+monolith, no external services — it runs as a Docker container on a personal
+machine behind the home network.
 
 The requirements are the source of truth and every open question in them is
 already decided: read `.claude/requirements/00-architecture-and-foundations.md`
@@ -58,17 +60,18 @@ first, then the relevant phase doc, before changing behaviour.
 ## Testing
 
 - Unit tests: JUnit 5 + **MockK** (not Mockito — better fit for Kotlin's final classes, coroutines, and lambda syntax).
-- Integration tests: `@SpringBootTest` + **Testcontainers** against a real Postgres container, not H2 (H2's SQL dialect and constraint behavior diverge from Postgres often enough to hide bugs).
+- **Unit tests only, for now.** The requirements defer integration/end-to-end tests until the React frontend and Telegram bot exist, so don't add them unprompted. When they do come: `@SpringBootTest` + **Testcontainers** against a real Postgres container, not H2 (H2's SQL dialect and constraint behavior diverge from Postgres often enough to hide bugs).
 - Descriptive backtick test names: `` fun `returns 404 when user not found`() ``.
 - One behavior per test; arrange–act–assert, no branching/looping inside a test.
 
-## Suggested Project Structure
+## Project Structure
 
 ```
 src/main/kotlin/.../
   config/
-  controller/
-  service/
+  web/                # controllers
+  security/           # JWT filter and service
+  service/            # interface + Impl pairs
   repository/
   domain/
   dto/
@@ -85,3 +88,6 @@ src/test/kotlin/...
 - ktlint wired into the Gradle build (`ktlintCheck` runs as part of `check`);
   `./gradlew ktlintFormat` fixes most violations.
 - CI gate: build + lint + tests must all pass before merge; no exceptions for "just this once."
+- Deployment: the `Dockerfile` builds the jar inside the image;
+  `docker compose --profile app up -d --build` runs it next to Postgres.
+  Plain `docker compose up -d` starts Postgres alone for local development.

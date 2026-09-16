@@ -26,6 +26,27 @@ The browsable API contract lives at `/swagger-ui.html`.
 
 `./gradlew build` runs ktlint and the unit tests; both gate the build.
 
+## Running it in Docker
+
+The `Dockerfile` builds the jar inside the image, so the host needs only
+Docker. The `app` profile runs it next to Postgres:
+
+```bash
+export JWT_SECRET="$(openssl rand -hex 32)"   # keep it: rotating it logs everyone out
+docker compose --profile app up -d --build
+```
+
+Flyway migrates on startup; bootstrap the `OWNER` as above, running `psql`
+inside the database container:
+
+```bash
+docker exec -i family-finance-postgres \
+  psql -U family_finance -d family_finance < db/bootstrap-owner.sql
+```
+
+`POSTGRES_PORT` and `APP_PORT` override the published host ports (5432 and
+8080) when those are taken.
+
 ## Requirements
 
 Split into one doc per phase so each stays focused. Read `00-` first — every
