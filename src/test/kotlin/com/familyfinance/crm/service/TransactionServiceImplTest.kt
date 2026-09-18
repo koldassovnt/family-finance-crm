@@ -2,6 +2,7 @@ package com.familyfinance.crm.service
 
 import com.familyfinance.crm.account
 import com.familyfinance.crm.category
+import com.familyfinance.crm.domain.Account
 import com.familyfinance.crm.domain.CategoryKind
 import com.familyfinance.crm.domain.Transaction
 import com.familyfinance.crm.domain.TransactionType
@@ -358,6 +359,55 @@ class TransactionServiceImplTest {
     }
 
     @Test
+    fun `editing both amounts of a cross-currency transfer moves each side by its own figure`() {
+        val source = account(owner, balance = "1000", currency = "KZT")
+        val destination = account(owner, balance = "0", currency = "USD")
+        val transfer = crossCurrencyTransfer(source, destination, amount = "478", toAmount = "1")
+
+        service.update(
+            transfer.idValue,
+            owner,
+            UpdateTransactionRequest(amount = BigDecimal("956"), toAmount = BigDecimal("2")),
+        )
+
+        assertEquals(BigDecimal("44"), source.balance)
+        assertEquals(BigDecimal("2"), destination.balance)
+    }
+
+    @Test
+    fun `editing only the destination amount leaves the source balance alone`() {
+        val source = account(owner, balance = "1000", currency = "KZT")
+        val destination = account(owner, balance = "0", currency = "USD")
+        val transfer = crossCurrencyTransfer(source, destination, amount = "478", toAmount = "1")
+
+        service.update(transfer.idValue, owner, UpdateTransactionRequest(toAmount = BigDecimal("3")))
+
+        assertEquals(BigDecimal("522"), source.balance)
+        assertEquals(BigDecimal("3"), destination.balance)
+    }
+
+    @Test
+    fun `rejects changing a cross-currency transfer's amount without a destination amount`() {
+        val source = account(owner, balance = "1000", currency = "KZT")
+        val destination = account(owner, balance = "0", currency = "USD")
+        val transfer = crossCurrencyTransfer(source, destination, amount = "478", toAmount = "1")
+
+        assertThrows<ValidationException> {
+            service.update(transfer.idValue, owner, UpdateTransactionRequest(amount = BigDecimal("956")))
+        }
+    }
+
+    @Test
+    fun `rejects a destination amount on a transaction that is not a cross-currency transfer`() {
+        val account = account(owner, balance = "100")
+        val expense = transaction(TransactionType.EXPENSE, account, amount = "50")
+
+        assertThrows<ValidationException> {
+            service.update(expense.idValue, owner, UpdateTransactionRequest(toAmount = BigDecimal("10")))
+        }
+    }
+
+    @Test
     fun `list without filters queries the whole range with no account or category`() {
         every {
             transactionRepository.findForOwner(owner, today.minusMonths(1), today, null, null)
@@ -396,6 +446,38 @@ class TransactionServiceImplTest {
         assertThrows<ValidationException> {
             service.list(owner = owner, from = today.minusYears(1).minusDays(1), to = today)
         }
+    }
+
+    private fun crossCurrencyTransfer(
+        source: Account,
+        destination: Account,
+        amount: String,
+        toAmount: String,
+    ): Transaction {
+        every { accountService.getOwnedBy(source.idValue, owner) } returns source
+        every { accountService.getOwnedBy(destination.idValue, owner) } returns destination
+        return service
+            .create(
+                owner,
+                request(
+                    type = TransactionType.TRANSFER,
+                    amount = amount,
+                    accountId = source.idValue,
+                    toAccountId = destination.idValue,
+                    toAmount = BigDecimal(toAmount),
+                ),
+            ).also { every { transactionRepository.findDetailedById(it.idValue) } returns it }
+    }
+
+    private fun transaction(
+        type: TransactionType,
+        account: Account,
+        amount: String,
+    ): Transaction {
+        every { accountService.getOwnedBy(account.idValue, owner) } returns account
+        return service
+            .create(owner, request(type, amount, account.idValue))
+            .also { every { transactionRepository.findDetailedById(it.idValue) } returns it }
     }
 
     private fun request(

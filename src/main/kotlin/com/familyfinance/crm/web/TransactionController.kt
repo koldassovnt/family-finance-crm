@@ -96,8 +96,10 @@ class TransactionController(
     @Operation(
         summary = "Edit a transaction",
         description =
-            "Amount, date, category and note only — changing the type or the accounts means delete and recreate. " +
-                "A changed amount re-applies the balance difference.",
+            "Amount, destination amount, date, category and note only — changing the type or the accounts " +
+                "means delete and recreate. A changed amount re-applies the balance difference. " +
+                "On a cross-currency TRANSFER the two sides are credited independently, so a changed " +
+                "amount must be accompanied by `toAmount`.",
     )
     @ApiResponse(responseCode = "200", description = "Updated")
     fun update(

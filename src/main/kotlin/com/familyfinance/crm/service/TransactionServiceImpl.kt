@@ -93,17 +93,22 @@ class TransactionServiceImpl(
     ): Transaction {
         val transaction = getOwned(id, owner)
 
-        request.amount?.let { newAmount ->
-            val validated =
+        val newAmount =
+            request.amount?.let { amount ->
                 if (transaction.type == TransactionType.ADJUSTMENT) {
-                    requireNonZeroAmount(newAmount)
+                    requireNonZeroAmount(amount)
                 } else {
-                    requirePositiveAmount(newAmount)
+                    requirePositiveAmount(amount)
                 }
-            // Type and accounts are immutable here, so reversing and re-applying
-            // only ever touches the accounts this transaction already has.
+            }
+        val newToAmount = resolveToAmountPatch(request, transaction)
+        if (newAmount != null || newToAmount != null) {
+            // Both sides move in one reverse/apply pair, so a cross-currency
+            // transfer never sits half-corrected. Type and accounts are
+            // immutable here, so this only touches the accounts it already has.
             transaction.applyToBalances(REVERSE)
-            transaction.amount = validated
+            newAmount?.let { transaction.amount = it }
+            newToAmount?.let { transaction.toAmount = it }
             transaction.applyToBalances(APPLY)
         }
         request.exchangeRate?.let { newRate ->
@@ -291,6 +296,31 @@ class TransactionServiceImpl(
             category = null,
             note = request.note?.let(::validateNote),
         )
+    }
+
+    /**
+     * `toAmount` on an edit belongs only to a cross-currency `TRANSFER`, which
+     * is exactly the transaction whose two sides are credited independently.
+     * Changing such a transfer's `amount` without it would correct the source
+     * and leave the destination holding the old figure, so that combination is
+     * rejected rather than silently half-applied.
+     */
+    private fun resolveToAmountPatch(
+        request: UpdateTransactionRequest,
+        transaction: Transaction,
+    ): BigDecimal? {
+        // Set at creation for exactly the cross-currency transfers, and nothing else.
+        val crossCurrencyTransfer = transaction.toAmount != null
+        if (request.toAmount != null && !crossCurrencyTransfer) {
+            throw invalidField("toAmount", "is only valid for a cross-currency TRANSFER")
+        }
+        if (crossCurrencyTransfer && request.amount != null && request.toAmount == null) {
+            throw invalidField(
+                "toAmount",
+                "is required when changing the amount of a cross-currency TRANSFER",
+            )
+        }
+        return request.toAmount?.let { requirePositiveAmount(it, field = "toAmount") }
     }
 
     /**

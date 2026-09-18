@@ -32,11 +32,18 @@ data class CreateTransactionRequest(
 )
 
 /**
- * Only amount/date/category/note are editable. Changing type, account, or
- * destination account means delete and recreate.
+ * Only amount/toAmount/date/category/note are editable. Changing type,
+ * account, or destination account means delete and recreate.
  */
 data class UpdateTransactionRequest(
     val amount: BigDecimal? = null,
+    /**
+     * The destination figure of a cross-currency `TRANSFER`. Required
+     * alongside a changed `amount` on one, since the two sides are credited
+     * independently and correcting only the source would leave the
+     * destination holding the old figure.
+     */
+    val toAmount: BigDecimal? = null,
     /** Correcting a mistyped rate re-derives the KZT figure. */
     val exchangeRate: BigDecimal? = null,
     val occurredOn: LocalDate? = null,
