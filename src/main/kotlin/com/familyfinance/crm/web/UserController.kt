@@ -15,6 +15,7 @@ import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
 import org.springframework.security.access.prepost.PreAuthorize
+import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
@@ -44,6 +45,16 @@ class UserController(
     fun create(
         @Valid @RequestBody request: CreateUserRequest,
     ): UserResponse = userService.createMember(request).toResponse()
+
+    @GetMapping("/me")
+    @Operation(
+        summary = "Who you are",
+        description =
+            "The caller's own id, email, display name and role. There is no refresh flow, so a client " +
+                "holding a stored token uses this to re-establish identity after a reload.",
+    )
+    @ApiResponse(responseCode = "200", description = "The authenticated user")
+    fun me(): UserResponse = currentUser.require().toResponse()
 
     @PostMapping("/me/password")
     @ResponseStatus(HttpStatus.NO_CONTENT)

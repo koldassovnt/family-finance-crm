@@ -37,6 +37,19 @@ interface TransactionService {
         to: LocalDate,
     ): List<Transaction>
 
+    /**
+     * Every account at once, bounded by the same one-year window as [history].
+     * Both filters are optional; an unknown account or category id is a 404
+     * rather than an empty list, so a typo is visible.
+     */
+    fun list(
+        owner: User,
+        from: LocalDate,
+        to: LocalDate,
+        accountId: UUID? = null,
+        categoryId: UUID? = null,
+    ): List<Transaction>
+
     fun monthlySummary(
         owner: User,
         month: YearMonth,

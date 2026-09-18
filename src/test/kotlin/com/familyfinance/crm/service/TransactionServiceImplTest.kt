@@ -9,6 +9,7 @@ import com.familyfinance.crm.dto.CreateTransactionRequest
 import com.familyfinance.crm.dto.ReconcileRequest
 import com.familyfinance.crm.dto.UpdateTransactionRequest
 import com.familyfinance.crm.exception.CurrencyMismatchException
+import com.familyfinance.crm.exception.NotFoundException
 import com.familyfinance.crm.exception.ValidationException
 import com.familyfinance.crm.fixedClock
 import com.familyfinance.crm.idValue
@@ -17,6 +18,7 @@ import com.familyfinance.crm.user
 import com.familyfinance.crm.withId
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import java.math.BigDecimal
@@ -352,6 +354,47 @@ class TransactionServiceImplTest {
 
         assertThrows<ValidationException> {
             service.reconcile(account.idValue, owner, ReconcileRequest(actualBalance = BigDecimal("100.00")))
+        }
+    }
+
+    @Test
+    fun `list without filters queries the whole range with no account or category`() {
+        every {
+            transactionRepository.findForOwner(owner, today.minusMonths(1), today, null, null)
+        } returns emptyList()
+
+        service.list(owner = owner, from = today.minusMonths(1), to = today)
+
+        verify { transactionRepository.findForOwner(owner, today.minusMonths(1), today, null, null) }
+    }
+
+    @Test
+    fun `list passes an account filter through once it is confirmed to be the caller's`() {
+        val account = account(owner)
+        every { accountService.getOwnedBy(account.idValue, owner) } returns account
+        every {
+            transactionRepository.findForOwner(owner, today, today, account.idValue, null)
+        } returns emptyList()
+
+        service.list(owner = owner, from = today, to = today, accountId = account.idValue)
+
+        verify { accountService.getOwnedBy(account.idValue, owner) }
+    }
+
+    @Test
+    fun `list rejects an account that belongs to someone else`() {
+        val strangersAccount = UUID.randomUUID()
+        every { accountService.getOwnedBy(strangersAccount, owner) } throws NotFoundException("Account was not found")
+
+        assertThrows<NotFoundException> {
+            service.list(owner = owner, from = today, to = today, accountId = strangersAccount)
+        }
+    }
+
+    @Test
+    fun `list rejects a range longer than a year`() {
+        assertThrows<ValidationException> {
+            service.list(owner = owner, from = today.minusYears(1).minusDays(1), to = today)
         }
     }
 

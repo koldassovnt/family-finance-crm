@@ -14,6 +14,7 @@ import io.swagger.v3.oas.annotations.media.Schema
 import io.swagger.v3.oas.annotations.responses.ApiResponse
 import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
+import org.springframework.format.annotation.DateTimeFormat
 import org.springframework.http.HttpStatus
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
@@ -26,6 +27,7 @@ import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 import java.time.Clock
+import java.time.LocalDate
 import java.time.YearMonth
 import java.util.UUID
 
@@ -37,6 +39,41 @@ class TransactionController(
     private val currentUser: CurrentUserProvider,
     private val clock: Clock,
 ) {
+    @GetMapping
+    @Operation(
+        summary = "List transactions across every account",
+        description =
+            "`from` and `to` are required and the range is capped at one year — there is no pagination. " +
+                "Optionally narrowed by `accountId` (matching either side of a transfer) and `categoryId`. " +
+                "Newest first. Per-account history with the same window lives at " +
+                "GET /api/v1/accounts/{id}/transactions.",
+    )
+    @ApiResponse(responseCode = "200", description = "Transactions in the range, newest first")
+    @ApiResponse(
+        responseCode = "400",
+        description = "Range is inverted or longer than a year",
+        content = [Content(schema = Schema(implementation = ErrorResponse::class))],
+    )
+    @ApiResponse(
+        responseCode = "404",
+        description = "The account or category filter is not one of yours",
+        content = [Content(schema = Schema(implementation = ErrorResponse::class))],
+    )
+    fun list(
+        @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) from: LocalDate,
+        @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) to: LocalDate,
+        @RequestParam(required = false) accountId: UUID?,
+        @RequestParam(required = false) categoryId: UUID?,
+    ): List<TransactionResponse> =
+        transactionService
+            .list(
+                owner = currentUser.require(),
+                from = from,
+                to = to,
+                accountId = accountId,
+                categoryId = categoryId,
+            ).map { it.toResponse() }
+
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     @Operation(

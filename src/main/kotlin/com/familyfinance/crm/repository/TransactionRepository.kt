@@ -40,6 +40,34 @@ interface TransactionRepository : JpaRepository<Transaction, UUID> {
     ): List<Transaction>
 
     /**
+     * The same window across every account the owner has, with both filters
+     * optional. Transfers between the owner's own accounts are the only ones
+     * that exist, so matching on the source account's owner already covers
+     * both sides — but an `accountId` filter still has to match either side,
+     * exactly as [findHistory] does.
+     */
+    @Query(
+        """
+        SELECT t FROM Transaction t
+        JOIN FETCH t.account a
+        LEFT JOIN FETCH t.toAccount ta
+        LEFT JOIN FETCH t.category c
+        WHERE a.owner = :owner
+          AND t.occurredOn BETWEEN :from AND :to
+          AND (:accountId IS NULL OR a.id = :accountId OR ta.id = :accountId)
+          AND (:categoryId IS NULL OR c.id = :categoryId)
+        ORDER BY t.occurredOn DESC, t.createdAt DESC
+        """,
+    )
+    fun findForOwner(
+        owner: User,
+        from: LocalDate,
+        to: LocalDate,
+        accountId: UUID?,
+        categoryId: UUID?,
+    ): List<Transaction>
+
+    /**
      * Fetches the associations the response needs up front: with
      * `open-in-view: false` the session is gone by the time the controller maps
      * the entity, so a lazy proxy there is a 500.

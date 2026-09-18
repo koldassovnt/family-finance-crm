@@ -146,6 +146,28 @@ class TransactionServiceImpl(
     }
 
     @Transactional(readOnly = true)
+    override fun list(
+        owner: User,
+        from: LocalDate,
+        to: LocalDate,
+        accountId: UUID?,
+        categoryId: UUID?,
+    ): List<Transaction> {
+        val range = historyRange(from = from, to = to)
+        // Resolved only to 404 on an id that isn't the caller's; the query
+        // filters on the id itself.
+        accountId?.let { accountService.getOwnedBy(it, owner) }
+        categoryId?.let { categoryService.getOwnedBy(it, owner) }
+        return transactionRepository.findForOwner(
+            owner = owner,
+            from = range.from,
+            to = range.to,
+            accountId = accountId,
+            categoryId = categoryId,
+        )
+    }
+
+    @Transactional(readOnly = true)
     override fun monthlySummary(
         owner: User,
         month: YearMonth,
