@@ -58,13 +58,16 @@ phase doc assumes it. Companion doc outside this folder: `frontend-requirements.
 | `.claude/requirements/phase-0-1-foundation-ledger.md`     | built |
 | `.claude/requirements/phase-2-budgets-goals.md`           | built |
 | `.claude/requirements/phase-4-bills-calendar.md`          | built |
+| `.claude/requirements/phase-7-topics.md`                  | built |
 
-**Current scope ends at Phase 4.** That's the whole build for now:
-foundation, ledger, budgets, goals, and bills.
+**Phases 0/1, 2, 4 and 7 are built.** Phase 7 groups a trip's or a
+renovation's transactions into one view.
 
-Phase 3 (Loans & Mortgages) and Phase 7 (Automation & Family Access) were both **dropped** — loans and mortgages are tracked
-as ordinary expense categories, so there was no entity left to spec. Later
-phase numbers are unchanged to avoid churning cross-references.
+Phase 3 (Loans & Mortgages) was **dropped** — loans and mortgages are tracked
+as ordinary expense categories, so there was no entity left to spec. The
+original Phase 7 (Automation & Family Access) was dropped too, and its number
+is reused by the topics doc above since nothing referenced it. Phases 5 and 6
+keep their numbers.
 
 `.claude/requirements/phase-5-investments.md` and `phase-6-net-worth.md` hold
 specs for investments and net worth. They're written
@@ -73,16 +76,18 @@ Phases 0–4 are actually running and it's clear what's genuinely wanted. Treat
 them as a starting point to re-review, not settled decisions.
 
 Every in-scope phase is spec'd, and every open question has been decided —
-there are no unresolved assumptions left in Phases 0–4. (One remains in the
-out-of-scope docs, flagged inline, for whenever that phase comes back.)
+there are no unresolved assumptions left in Phases 0–4. (Assumptions remain in
+the not-yet-built docs, flagged inline: one in the out-of-scope Phase 5/6 pair,
+and one in Phase 7 — whether a transaction may belong to more than one topic,
+built as one-per-transaction.)
 
 **Decisions worth knowing before reading anything else:** JWT with a single
-30-day token; soft delete everywhere (with one deliberate `@SQLRestriction`
-exception on `Category`); `Asia/Almaty` fixed as the app timezone; all
+30-day token; soft delete everywhere (with two deliberate `@SQLRestriction`
+exceptions, `Category` and `Topic`, so historical transactions keep resolving
+them); `Asia/Almaty` fixed as the app timezone; all
 endpoints under `/api/v1/`; balances corrected via an `ADJUSTMENT`
 transaction rather than a direct edit; no pagination, date-range bounded
 instead.
 
-**Phases 0/1, 2 and 4 are all built — the whole current scope is done.**
-Phases 5 and 6 remain out of scope; revisit them only once this is genuinely
-in daily use.
+**Phases 0/1, 2, 4 and 7 are all built.** Phases 5 and 6 remain out of scope;
+revisit them only once this is genuinely in daily use.
