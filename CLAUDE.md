@@ -7,8 +7,11 @@ Project conventions for Claude Code to follow when working in this repository.
 A single-deployment backend for one family's finances: accounts, categories,
 a typed transaction ledger, budgets and goals (Phase 2), bills (Phase 4), and
 topics (Phase 7) — a trip's or a renovation's transactions grouped into one
-view. Phases 5 (investments) and 6 (net worth) are written up but out of
-scope — don't start them unless asked. Modular monolith, no external
+view. Phase 8 (sharing single resources with other household members as
+read-only viewers) is spec'd and not yet built; it is the first feature where
+a bug is a disclosure rather than a wrong number, so read its doc before
+touching any access check. Phases 5 (investments) and 6 (net worth) are
+written up but out of scope — don't start them unless asked. Modular monolith, no external
 services — it runs as a Docker container on a personal machine behind the home
 network.
 
