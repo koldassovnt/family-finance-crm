@@ -4,12 +4,15 @@ import com.familyfinance.crm.domain.Account
 import com.familyfinance.crm.domain.Bank
 import com.familyfinance.crm.domain.BaseEntity
 import com.familyfinance.crm.domain.Category
+import com.familyfinance.crm.domain.Topic
 import com.familyfinance.crm.domain.Transaction
 import com.familyfinance.crm.domain.User
 import com.familyfinance.crm.repository.CategoryTotal
 import com.familyfinance.crm.service.BillWithStatus
 import com.familyfinance.crm.service.BudgetWithUsage
 import com.familyfinance.crm.service.GoalWithProgress
+import com.familyfinance.crm.service.TopicDetail
+import com.familyfinance.crm.service.TopicWithTotals
 import java.time.YearMonth
 import java.util.UUID
 
@@ -55,7 +58,35 @@ fun Transaction.toResponse() =
         accountId = account.requiredId(),
         toAccountId = toAccount?.id,
         category = category?.toResponse(),
+        topic = topic?.toRef(),
         note = note,
+    )
+
+fun Topic.toRef() = TopicRef(id = requiredId(), name = name, status = status)
+
+fun TopicWithTotals.toResponse() =
+    TopicResponse(
+        id = topic.requiredId(),
+        name = topic.name,
+        description = topic.description,
+        startDate = topic.startDate,
+        endDate = topic.endDate,
+        plannedAmount = topic.plannedAmount,
+        status = topic.status,
+        spent = spent,
+        received = received,
+        net = net,
+        remaining = remaining,
+        transactionCount = transactionCount,
+        firstTransactionOn = firstTransactionOn,
+        lastTransactionOn = lastTransactionOn,
+    )
+
+fun TopicDetail.toResponse() =
+    TopicDetailResponse(
+        topic = totals.toResponse(),
+        expenseByCategory = expenseByCategory.map { it.toSummary() },
+        incomeByCategory = incomeByCategory.map { it.toSummary() },
     )
 
 fun BudgetWithUsage.toResponse() =

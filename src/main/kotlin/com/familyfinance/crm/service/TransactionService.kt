@@ -48,6 +48,7 @@ interface TransactionService {
         to: LocalDate,
         accountId: UUID? = null,
         categoryId: UUID? = null,
+        topicId: UUID? = null,
     ): List<Transaction>
 
     fun monthlySummary(

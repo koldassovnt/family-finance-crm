@@ -44,7 +44,8 @@ class TransactionController(
         summary = "List transactions across every account",
         description =
             "`from` and `to` are required and the range is capped at one year — there is no pagination. " +
-                "Optionally narrowed by `accountId` (matching either side of a transfer) and `categoryId`. " +
+                "Optionally narrowed by `accountId` (matching either side of a transfer), `categoryId` " +
+                "and `topicId`. " +
                 "Newest first. Per-account history with the same window lives at " +
                 "GET /api/v1/accounts/{id}/transactions.",
     )
@@ -64,6 +65,7 @@ class TransactionController(
         @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) to: LocalDate,
         @RequestParam(required = false) accountId: UUID?,
         @RequestParam(required = false) categoryId: UUID?,
+        @RequestParam(required = false) topicId: UUID?,
     ): List<TransactionResponse> =
         transactionService
             .list(
@@ -72,6 +74,7 @@ class TransactionController(
                 to = to,
                 accountId = accountId,
                 categoryId = categoryId,
+                topicId = topicId,
             ).map { it.toResponse() }
 
     @PostMapping

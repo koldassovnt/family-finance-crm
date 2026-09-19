@@ -25,6 +25,8 @@ data class CreateTransactionRequest(
      */
     val exchangeRate: BigDecimal? = null,
     val categoryId: UUID? = null,
+    /** The undertaking this belongs to; `INCOME`/`EXPENSE` only. */
+    val topicId: UUID? = null,
     /** Defaults to today in the app timezone; may not be in the future. */
     val occurredOn: LocalDate? = null,
     @field:Size(max = 1000, message = "must be at most 1000 characters")
@@ -48,6 +50,8 @@ data class UpdateTransactionRequest(
     val exchangeRate: BigDecimal? = null,
     val occurredOn: LocalDate? = null,
     val categoryId: Optional<UUID>? = null,
+    /** An explicit `null` detaches the transaction from its topic. */
+    val topicId: Optional<UUID>? = null,
     val note: Optional<String>? = null,
 )
 
@@ -64,6 +68,8 @@ data class TransactionResponse(
     val accountId: UUID,
     val toAccountId: UUID?,
     val category: CategoryResponse?,
+    /** Embedded like the category, so a list needs no second lookup. */
+    val topic: TopicRef?,
     val note: String?,
 )
 

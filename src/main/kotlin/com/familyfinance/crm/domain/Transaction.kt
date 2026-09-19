@@ -52,4 +52,12 @@ class Transaction(
     var category: Category?,
     @Column(length = 1000)
     var note: String?,
+    /**
+     * The undertaking this belongs to, if any — see [Topic]. Only an `INCOME`
+     * or `EXPENSE` may carry one: attaching a `TRANSFER` would count both the
+     * withdrawal and what it paid for.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "topic_id")
+    var topic: Topic? = null,
 ) : BaseEntity()

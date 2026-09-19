@@ -15,6 +15,7 @@ import com.familyfinance.crm.exception.ValidationException
 import com.familyfinance.crm.fixedClock
 import com.familyfinance.crm.idValue
 import com.familyfinance.crm.repository.TransactionRepository
+import com.familyfinance.crm.topic
 import com.familyfinance.crm.user
 import com.familyfinance.crm.withId
 import io.mockk.every
@@ -24,6 +25,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import java.math.BigDecimal
 import java.time.LocalDate
+import java.util.Optional
 import java.util.UUID
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -33,12 +35,14 @@ class TransactionServiceImplTest {
     private val transactionRepository = mockk<TransactionRepository>()
     private val accountService = mockk<AccountService>()
     private val categoryService = mockk<CategoryService>()
+    private val topicService = mockk<TopicService>()
     private val today = LocalDate.of(2026, 9, 10)
     private val service =
         TransactionServiceImpl(
             transactionRepository = transactionRepository,
             accountService = accountService,
             categoryService = categoryService,
+            topicService = topicService,
             clock = fixedClock(today),
         )
 
@@ -408,14 +412,68 @@ class TransactionServiceImplTest {
     }
 
     @Test
+    fun `an expense may be attached to a topic on creation`() {
+        val account = account(owner, balance = "100")
+        val topic = topic(owner)
+        every { accountService.getOwnedBy(account.idValue, owner) } returns account
+        every { topicService.getOwnedBy(topic.idValue, owner) } returns topic
+
+        val created =
+            service.create(
+                owner,
+                request(TransactionType.EXPENSE, "50", account.idValue, topicId = topic.idValue),
+            )
+
+        assertEquals(topic, created.topic)
+    }
+
+    @Test
+    fun `rejects attaching a transfer to a topic`() {
+        val source = account(owner, balance = "100")
+        val destination = account(owner)
+        val topic = topic(owner)
+        every { accountService.getOwnedBy(source.idValue, owner) } returns source
+        every { accountService.getOwnedBy(destination.idValue, owner) } returns destination
+
+        assertThrows<ValidationException> {
+            service.create(
+                owner,
+                request(
+                    type = TransactionType.TRANSFER,
+                    amount = "50",
+                    accountId = source.idValue,
+                    toAccountId = destination.idValue,
+                    topicId = topic.idValue,
+                ),
+            )
+        }
+    }
+
+    @Test
+    fun `editing a transaction's topic to null detaches it`() {
+        val account = account(owner, balance = "100")
+        val topic = topic(owner)
+        val transaction = transaction(TransactionType.EXPENSE, account, amount = "30")
+        transaction.topic = topic
+
+        service.update(
+            transaction.idValue,
+            owner,
+            UpdateTransactionRequest(topicId = Optional.empty()),
+        )
+
+        assertNull(transaction.topic)
+    }
+
+    @Test
     fun `list without filters queries the whole range with no account or category`() {
         every {
-            transactionRepository.findForOwner(owner, today.minusMonths(1), today, null, null)
+            transactionRepository.findForOwner(owner, today.minusMonths(1), today, null, null, null)
         } returns emptyList()
 
         service.list(owner = owner, from = today.minusMonths(1), to = today)
 
-        verify { transactionRepository.findForOwner(owner, today.minusMonths(1), today, null, null) }
+        verify { transactionRepository.findForOwner(owner, today.minusMonths(1), today, null, null, null) }
     }
 
     @Test
@@ -423,7 +481,7 @@ class TransactionServiceImplTest {
         val account = account(owner)
         every { accountService.getOwnedBy(account.idValue, owner) } returns account
         every {
-            transactionRepository.findForOwner(owner, today, today, account.idValue, null)
+            transactionRepository.findForOwner(owner, today, today, account.idValue, null, null)
         } returns emptyList()
 
         service.list(owner = owner, from = today, to = today, accountId = account.idValue)
@@ -487,6 +545,7 @@ class TransactionServiceImplTest {
         toAccountId: UUID? = null,
         toAmount: BigDecimal? = null,
         categoryId: UUID? = null,
+        topicId: UUID? = null,
         occurredOn: LocalDate? = null,
         exchangeRate: BigDecimal? = null,
     ) = CreateTransactionRequest(
@@ -496,6 +555,7 @@ class TransactionServiceImplTest {
         toAccountId = toAccountId,
         toAmount = toAmount,
         categoryId = categoryId,
+        topicId = topicId,
         occurredOn = occurredOn,
         exchangeRate = exchangeRate,
     )

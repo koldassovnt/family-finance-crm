@@ -30,6 +30,7 @@ class TransactionServiceImpl(
     private val transactionRepository: TransactionRepository,
     private val accountService: AccountService,
     private val categoryService: CategoryService,
+    private val topicService: TopicService,
     private val clock: Clock,
 ) : TransactionService {
     @Transactional
@@ -123,6 +124,13 @@ class TransactionServiceImpl(
             transaction.category =
                 categoryId.orElse(null)?.let { resolveCategory(it, transaction.type, owner) }
         }
+        request.topicId?.let { topicId ->
+            val newTopic = topicId.orElse(null)
+            if (newTopic != null && transaction.type !in TOPIC_TYPES) {
+                throw invalidField("topicId", "is only valid for an INCOME or EXPENSE")
+            }
+            transaction.topic = newTopic?.let { topicService.getOwnedBy(it, owner) }
+        }
         request.note?.let { transaction.note = it.orElse(null)?.let(::validateNote) }
         return transaction
     }
@@ -157,18 +165,21 @@ class TransactionServiceImpl(
         to: LocalDate,
         accountId: UUID?,
         categoryId: UUID?,
+        topicId: UUID?,
     ): List<Transaction> {
         val range = historyRange(from = from, to = to)
         // Resolved only to 404 on an id that isn't the caller's; the query
         // filters on the id itself.
         accountId?.let { accountService.getOwnedBy(it, owner) }
         categoryId?.let { categoryService.getOwnedBy(it, owner) }
+        topicId?.let { topicService.getOwnedBy(it, owner) }
         return transactionRepository.findForOwner(
             owner = owner,
             from = range.from,
             to = range.to,
             accountId = accountId,
             categoryId = categoryId,
+            topicId = topicId,
         )
     }
 
@@ -261,6 +272,7 @@ class TransactionServiceImpl(
             account = account,
             toAccount = null,
             category = request.categoryId?.let { resolveCategory(it, type, owner) },
+            topic = request.topicId?.let { topicService.getOwnedBy(it, owner) },
             note = request.note?.let(::validateNote),
         )
     }
@@ -279,6 +291,10 @@ class TransactionServiceImpl(
         }
         if (request.categoryId != null) {
             throw invalidField("categoryId", "is not valid for a TRANSFER")
+        }
+        if (request.topicId != null) {
+            // Attaching one would count the withdrawal and what it paid for.
+            throw invalidField("topicId", "is not valid for a TRANSFER")
         }
         val toAccount = accountService.getOwnedBy(toAccountId, owner)
         val toAmount = resolveToAmount(request.toAmount, account, toAccount)
@@ -432,6 +448,9 @@ class TransactionServiceImpl(
         return note
     }
 }
+
+/** Only these may belong to a topic — see [TopicService]. */
+private val TOPIC_TYPES = setOf(TransactionType.INCOME, TransactionType.EXPENSE)
 
 private const val MAX_NOTE_LENGTH = 1000
 private const val MONEY_SCALE = 4

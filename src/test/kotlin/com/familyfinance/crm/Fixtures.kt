@@ -12,6 +12,8 @@ import com.familyfinance.crm.domain.CategoryKind
 import com.familyfinance.crm.domain.Goal
 import com.familyfinance.crm.domain.GoalStatus
 import com.familyfinance.crm.domain.GoalType
+import com.familyfinance.crm.domain.Topic
+import com.familyfinance.crm.domain.TopicStatus
 import com.familyfinance.crm.domain.User
 import com.familyfinance.crm.domain.UserRole
 import java.math.BigDecimal
@@ -115,6 +117,25 @@ fun goal(
         targetAmount = BigDecimal(targetAmount),
         targetDate = null,
         linkedAccount = linkedAccount,
+        status = status,
+    ).withId(id)
+
+fun topic(
+    owner: User,
+    name: String = "Malaysia trip",
+    startDate: LocalDate? = LocalDate.of(2026, 9, 1),
+    endDate: LocalDate? = LocalDate.of(2026, 9, 14),
+    plannedAmount: String? = null,
+    status: TopicStatus = TopicStatus.ACTIVE,
+    id: UUID = UUID.randomUUID(),
+): Topic =
+    Topic(
+        owner = owner,
+        name = name,
+        description = null,
+        startDate = startDate,
+        endDate = endDate,
+        plannedAmount = plannedAmount?.let(::BigDecimal),
         status = status,
     ).withId(id)
 
