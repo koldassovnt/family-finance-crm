@@ -58,7 +58,8 @@ docker exec -i family-finance-postgres \
 ## Requirements
 
 Split into one doc per phase so each stays focused. Read `00-` first — every
-phase doc assumes it. Companion doc outside this folder: `frontend-requirements.md`.
+phase doc assumes it. The frontend has its own matching set, in its own repo:
+`family-finance-crm-front/.claude/requirements/`.
 
 | Doc                                                       | Status         |
 |-----------------------------------------------------------|----------------|

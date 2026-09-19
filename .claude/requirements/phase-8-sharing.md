@@ -79,13 +79,25 @@ the moment of sharing, because "share my account" sounds narrower than it is.
   names** on those rows. An account without its transactions is a number with
   no explanation, so sharing one means sharing what it did. A transfer to an
   account that is *not* shared shows as a transfer whose destination the viewer
-  cannot resolve — the same missing-name case as a deleted account.
+  cannot resolve. Mechanically that is the deleted-account case — an id absent
+  from the list — but it must **not** borrow its wording: that account exists
+  and is perfectly healthy, it simply isn't theirs to see. «Другой счёт», not
+  «Удалённый счёт».
 - **`GOAL`** — name, target, status, progress, **and the linked account's name,
   currency and balance**, because progress *is* the balance against the target.
   Sharing a goal therefore discloses that account's balance without sharing the
-  account. **Assumption (flag if wrong):** acceptable, because a goal is
-  meaningless otherwise. If not, the alternative is a goal response that shows
-  only a percentage to viewers.
+  account.
+  - **There is no partial version of this.** A "percentage only" response looks
+    like a middle ground and isn't one: progress is `balance ÷ targetAmount`,
+    and a goal not worth sharing without its target is one multiplication away
+    from the balance. Hiding the number while publishing both its factors tells
+    the sharer they are protected when they are not, which is worse than
+    disclosing plainly.
+  - So the choice is binary: **disclose it and name the account in the share
+    dialog** («Будет виден баланс счёта „Депозит“»), or **do not allow goal
+    sharing**. Built as the first. If a percentage-only response is ever added
+    anyway, it must drop `targetAmount` too, or it is a false promise written
+    into code.
 - **`BUDGET`** — the category, the limit, and the computed usage for whatever
   month is requested, including past months. Not the individual transactions
   behind the total; that is the account's share to give.
@@ -138,9 +150,55 @@ users** — `POST /api/v1/users` is all that exists.
   already know each other's names, hiding the member list protects nothing and
   makes sharing impossible. It is a widening of today's behaviour, where users
   are invisible to each other, so it is called out rather than slipped in.
-- Deleted users stay out of the list but keep their shares; revoke on delete is
-  a separate decision, and the simplest correct answer is that a soft-deleted
-  user cannot authenticate, so their shares are inert.
+- Deleted users stay out of the list.
+
+### Deleting a member revokes their shares — and must
+
+There is **no user-delete endpoint today**, so this is a constraint on whoever
+adds one rather than something to build now. It is written here because the
+obvious implementation is broken in a way that only shows up later.
+
+`User` carries **`@SQLRestriction("is_deleted = false")`** — unlike `Category`
+and `Topic`, which deliberately do not. That restriction applies to
+relationship loading, so a `Share` whose `grantee` has been soft-deleted has a
+non-nullable association pointing at a row Hibernate now refuses to return.
+Listing outgoing shares then fails at the point of reading the grantee, rather
+than quietly showing a grant with nobody in it.
+
+So: **soft-deleting a user must soft-delete their shares in the same
+transaction**, both the ones granted to them and the ones they granted. That is
+also the behaviour anyone would expect — a member removed from the household
+loses access — and it keeps every share row's `grantee` and `owner`
+resolvable, which is what the list endpoints depend on.
+
+Do not solve this by denormalizing the grantee's name onto the share, and do
+not solve it by dropping the restriction from `User`: that restriction is what
+stops a deleted member authenticating, and it is load-bearing for
+`JwtAuthenticationFilter`.
+
+### The same wall stands on the resource's own owner
+
+Revoking the shares fixes the `Share` row. It does not fix the resource. Every
+shareable entity — `Account`, `Goal`, `Budget`, `Bill`, `Topic`, and `Category`
+with them — declares `owner` as `@ManyToOne(optional = false)` onto that same
+restricted `User`. A shared resource whose owner is soft-deleted is therefore a
+row with a non-nullable association Hibernate will refuse to resolve, and the
+revoke rule above does not reach it: it clears the grants, not the ownership.
+
+This has never fired because nothing dereferences `owner` for its fields today.
+Across every service it is only assigned or compared for an ownership check
+(`goal.owner != owner`), and `Mappers.kt` does not mention it at all — the
+owner is always the caller, who cannot be soft-deleted or they would not have
+authenticated. **Phase 8 is what introduces the second reader**: the list and
+detail responses carry `owner: { id, displayName }`, so for the first time a
+request resolves an owner who is not the requester.
+
+The revoke-on-delete rule makes the soft-deleted *grantee* unreachable, which
+means it is the soft-deleted *owner* that needs the test — one covering a
+viewer reading a resource whose owner was removed, not only an owner reading a
+grant to someone removed. Whoever adds the delete endpoint owns both cases:
+soft-deleting a user must leave no resolvable path from a live row to their
+`User`, which in practice means their resources go with their shares.
 
 ## API
 

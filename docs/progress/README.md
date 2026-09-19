@@ -30,11 +30,12 @@ latest" does not mean the same thing across them.
 | Path | `~/IdeaProjects/personal/family-finance-crm` | `~/VSCodeProjects/family-finance-crm-front` |
 | Remote | `git@github.com:koldassovnt/family-finance-crm.git` | `git@github.com:koldassovnt/family-finance-crm-front.git` |
 | Stack | Kotlin, Spring Boot 3.5, Postgres, Flyway | React 19, TypeScript, Vite, TanStack Query, shadcn |
-| Spec | `.claude/requirements/*.md` | `.claude/frontend-requirements.md` |
+| Spec | `.claude/requirements/*.md` | `.claude/requirements/*.md` (same per-phase split) |
 | Progress | this folder | `docs/progress/` in that repo |
 
-The frontend requirements doc lives **only** in the frontend repo. A copy once
-sat here and was moved; do not recreate it.
+The frontend requirements live **only** in the frontend repo, split per phase
+the same way these are. A single `frontend-requirements.md` once sat here, was
+moved there, and has since been split up — do not recreate it in either form.
 
 ## Working across them
 
