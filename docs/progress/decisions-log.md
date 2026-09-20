@@ -24,6 +24,16 @@ each other's names, hiding the list protects nothing. It is a real widening of
 Phase 0/1, where members were invisible to each other, so it is recorded rather
 than slipped in.
 
+**A summary can be re-read against source; a bad default cannot.** Two mistakes
+in the Phase 8 handoff were caught by the other session reading the DTOs. One
+was prose — describing `ShareAccess` and `AccessLevel` as one enum — and any
+careful re-reading of the source would have caught it. The other was in the
+design: a nested account defaulting to `access: "OWNER"`. Re-reading the summary
+more carefully could never have surfaced that, because the summary was right and
+the code was wrong. Worth keeping apart when deciding how much to trust a
+handoff: check prose against source, but a default that asserts the most
+permissive value is only found by someone asking what a field means.
+
 **An embedded resource carries no access badge.** `access` and `owner` say how
 the caller reached the resource they asked for, so they belong on that and
 nothing nested inside it. A goal's linked account is therefore a separate
@@ -150,6 +160,11 @@ session move when the dataset changes, and nothing announces it. State what
 moved, not just what was added — and prefer additive changes, like attaching an
 existing transaction, which move no totals.
 
-**Neither Claude session has seen the frontend in a browser.** Both logs are
-careful to distinguish "API shapes confirmed and rendering traced" from
-"watched it work". Keep that distinction.
+**Keep distinguishing "API shapes confirmed" from "watched it work".** That
+distinction held for every phase up to 7, when neither session had opened a
+browser. It no longer holds uniformly: on **2026-09-20** the frontend session
+drove Phase 8's screens in Chrome as both users, at desktop and phone width,
+and found three rendering defects that way — defects no amount of tracing had
+surfaced. Treat Phase 8's frontend as seen and everything earlier as traced,
+and keep saying which when recording anything visual. This backend session has
+still never opened the frontend.

@@ -1,7 +1,7 @@
 # State of the project
 
-As of **2026-09-20**. Backend `main` at `827def4` plus the Phase 8 commit;
-the frontend was at `c97dd64` when this was written and moves on its own.
+As of **2026-09-20**. Backend `main` at `29e9ece`; the frontend was at
+`dd8320d` when this was written and moves on its own.
 
 ## Backend — every in-scope phase is built
 
@@ -14,7 +14,7 @@ the frontend was at `c97dd64` when this was written and moves on its own.
 | 5 | Investment portfolio | Spec'd, **out of scope** |
 | 6 | Net worth and reporting | Spec'd, **out of scope** |
 | 7 | Topics — a trip's or renovation's transactions as one view | Built |
-| 8 | Sharing a single account/goal/budget/bill/topic with another member, read-only | Built |
+| 8 | Sharing a single account/goal/budget/bill/topic with another member, read-only | Built, and built in the frontend too |
 
 The original Phase 7 (*Automation & Family Access*) was dropped and its number
 reused by topics. Phases 5 and 6 keep theirs.
@@ -62,8 +62,8 @@ users, password.
 
 ## What is actually left
 
-**Phase 8 (sharing) is built on the backend and not yet in the frontend** —
-see `../../.claude/requirements/phase-8-sharing.md`, and read it before touching
+**Phase 8 (sharing) is built on both sides** — see
+`../../.claude/requirements/phase-8-sharing.md`, and read it before touching
 any access path: this is the feature where a bug is a disclosure rather than a
 wrong number, and it is the first crack in the single-owner rule every
 `getOwnedBy` depended on.
@@ -105,9 +105,13 @@ Otherwise nothing is half-built. These are open by choice:
    budget or by children (409 both times), and changing a password (doing so
    invalidates the seeded credentials everything else is tested with — the
    `member@example.com` account is the safe way to try it).
-5. **The frontend has never been seen in a browser by either Claude session.**
-   Its logs are careful to say "API shapes confirmed, rendering traced", not
-   "watched it work". Anything visual is unverified.
+5. **Only Phase 8's frontend has actually been seen in a browser.** On
+   2026-09-20 the frontend session drove its Phase 8 screens in Chrome as both
+   users, at desktop and phone width, and fixed three rendering defects found
+   that way. Everything earlier is still "API shapes confirmed, rendering
+   traced" rather than watched, so anything visual outside Phase 8 remains
+   unverified — and three defects surviving into a browser on the one screen
+   set that got there is the argument for not trusting the rest.
 6. **Deployment to a real server has not been done yet** — see
    `../running-the-service.md`, written for that purpose but not yet followed
    end to end on a real host.
