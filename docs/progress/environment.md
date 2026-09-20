@@ -1,7 +1,8 @@
 # Environment and test data
 
 The local development setup as it stands on this machine, and what is in the
-database. For how to run the thing from scratch, see
+database. Seeded data last changed **2026-09-20** (Phase 8 shares, member
+accounts, one overdue bill). For how to run the thing from scratch, see
 `../running-the-service.md`.
 
 **These are development credentials on a personal machine.** Nothing here is a
@@ -42,8 +43,13 @@ Note for anything schema-related: soft delete is universal, so most tables need
 | `member@example.com` | `member12345` | `MEMBER` |
 
 The `MEMBER` exists to exercise the owner-only guard: `POST /api/v1/users`
-returns 403 `FORBIDDEN` for it. It owns nothing, so logging in as that user is
-a tour of every empty state — useful, and not a sign of broken data.
+returns 403 `FORBIDDEN` for it. **It used to own nothing**, and older notes
+describe logging in as that user as a tour of every empty state. That changed
+on 2026-09-20: it now owns three accounts, so Phase 8's mixed `scope=ALL` list
+has both an owned and a shared row. It still owns no transactions, categories,
+budgets, goals, bills or topics, so every other screen is still an empty
+state — and its monthly summary is still zero, because an opening balance is
+not a transaction.
 
 ## Seeded data
 
@@ -77,9 +83,13 @@ is the "no budget that month" empty state rather than "no budgets configured".
 **Goals** — one at ~77% `ACTIVE`, one **achieved at 100% but still `ACTIVE`**
 (there is no `ACHIEVED` status), one `ARCHIVED`, one `ABANDONED`.
 
-**Bills** — an **overdue** one from August (the row a month calendar cannot
-show, which is why the `unpaid=true` filter exists), a paid one, and a
-four-month batch sharing a `batchId` with day 31 clamped to 09-30 and 11-30.
+**Bills** — «Электричество», 18 400 KZT due 2026-09-12 and unpaid, is the
+**overdue** row (the case a month calendar cannot show, which is why the
+`unpaid=true` filter exists). Plus paid ones and a four-month batch sharing a
+`batchId` with day 31 clamped to 09-30 and 11-30. An earlier August bill was
+the overdue example until somebody marked it paid; «Электричество» was added on
+2026-09-20 to restore the case, which is exactly the kind of drift the
+reseeding note below warns about.
 
 **Topics** — four, covering the interesting cases:
 
@@ -89,6 +99,30 @@ four-month batch sharing a `batchId` with day 31 clamped to 09-30 and 11-30.
 | «Малайзия 2026» | 5 rows incl. a USD one | Ordinary case; one row was added through the UI by hand |
 | «Подготовка к школе» | 1 row, planned 100 000 | **Negative `remaining`** — the over-plan styling case |
 | «Ремонт кухни» | `CLOSED`, nothing attached | Empty state and the status filter in one |
+
+**Member accounts** — «Карта Kaspi» (BANK, Kaspi Bank, 184 300), «Наличные»
+(CASH, 32 000) and «Накопления» (DEPOSIT, Halyk, 450 000), all owned by
+`member@example.com` and created through the API as that user. They exist so a
+viewer's `scope=ALL` is a genuinely mixed list rather than shared rows only.
+
+**Shares** (Phase 8) — seven grants, all from `owner@example.com` to
+`member@example.com`, each chosen to exercise one rendering case:
+
+| Shared | Case it covers |
+|---|---|
+| ACCOUNT «Депозит» | Its one history row is a TRANSFER whose counterparty «Каспи Голд» is **not** shared — the unresolvable-counterparty case, which must read «Другой счёт» and never «Удалённый счёт» |
+| GOAL «Подушка безопасности» | 100% achieved, and it discloses linked account «Каспи Голд» with its balance **while `GET /accounts/{that id}` 404s** for the viewer — the deliberate disclosure |
+| BUDGET «Продукты» | 112% — over limit |
+| BUDGET «Коммуналка» | 85.5% against an 80 threshold — amber. Two budgets on purpose, so a shared list is seen not to collapse to one row per type |
+| BILL «Электричество» | Unpaid and past due — an **overdue** shared bill |
+| BILL «Кредит на авто» | Unpaid, future due date |
+| TOPIC «Турция 2026» | 12 transactions with both `expenseByCategory` and `incomeByCategory` populated; its rows sit on accounts never shared — the widest of the five |
+
+Nothing the member owns is shared with anyone: sharing is one-directional per
+grant, and there is no grant in that direction to exercise. In a mixed
+`scope=ALL` list the owned rows come first, then the shared ones, each group
+sorted by name — so the list is not globally sorted, which a client wanting one
+flat alphabetical list has to handle itself.
 
 ## Reseeding
 
