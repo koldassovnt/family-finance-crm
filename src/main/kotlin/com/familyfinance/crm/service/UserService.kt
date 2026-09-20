@@ -8,6 +8,13 @@ interface UserService {
     /** The authenticated caller as an entity; the principal only carries an id. */
     fun getById(id: UUID): User
 
+    /**
+     * Every member of the household, for **any** authenticated caller — sharing
+     * needs somebody to share with. A widening of Phase 0/1, where users were
+     * invisible to each other; see `phase-8-sharing.md`.
+     */
+    fun listMembers(): List<User>
+
     fun authenticate(
         email: String,
         password: String,

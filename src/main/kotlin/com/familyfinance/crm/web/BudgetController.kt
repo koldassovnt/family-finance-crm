@@ -1,8 +1,10 @@
 package com.familyfinance.crm.web
 
+import com.familyfinance.crm.domain.ShareScope
 import com.familyfinance.crm.dto.BudgetResponse
 import com.familyfinance.crm.dto.CreateBudgetRequest
 import com.familyfinance.crm.dto.UpdateBudgetRequest
+import com.familyfinance.crm.dto.toBudgetResponse
 import com.familyfinance.crm.dto.toResponse
 import com.familyfinance.crm.exception.ErrorResponse
 import com.familyfinance.crm.service.BudgetService
@@ -45,17 +47,22 @@ class BudgetController(
                 "Each budget reports the limit that actually applied that month, and usage summed " +
                 "from that month's EXPENSE transactions in KZT, rolled up from any sub-categories. " +
                 "TRANSFER and ADJUSTMENT are excluded, and `percentUsed` is not capped at 100. " +
-                "A budget that did not exist yet is simply absent from that month.",
+                "A budget that did not exist yet is simply absent from that month. " +
+                "`scope` selects whose: `OWN` (the default, and what this returned before sharing " +
+                "existed), `SHARED`, or `ALL`. A shared budget's usage is its **owner's** spending — " +
+                "your own figures are never changed by something shared with you.",
     )
-    @ApiResponse(responseCode = "200", description = "Your budgets for that month")
+    @ApiResponse(responseCode = "200", description = "The budgets in scope for that month")
     fun list(
         @RequestParam(required = false) month: String?,
+        @RequestParam(defaultValue = "OWN") scope: ShareScope,
     ): List<BudgetResponse> =
         budgetService
             .list(
-                owner = currentUser.require(),
+                reader = currentUser.require(),
                 month = month?.let(::parseMonth) ?: YearMonth.now(clock),
-            ).map { it.toResponse() }
+                scope = scope,
+            ).map { it.toBudgetResponse() }
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)

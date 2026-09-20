@@ -34,6 +34,25 @@ interface TopicRepository : JpaRepository<Topic, UUID> {
         status: TopicStatus,
     ): List<Topic>
 
+    /** The owner is fetched because a viewer's response names it. */
+    @Query("SELECT t FROM Topic t JOIN FETCH t.owner WHERE t.id = :id AND t.isDeleted = false")
+    fun findActiveById(id: UUID): Topic?
+
+    /**
+     * The topics shared with a viewer. The widest of the five shares: a topic is
+     * a lens over transactions, so this list leads to transactions on accounts
+     * the viewer may not otherwise see.
+     */
+    @Query(
+        """
+        SELECT t FROM Topic t
+        JOIN FETCH t.owner
+        WHERE t.id IN :ids AND t.isDeleted = false
+        ORDER BY t.startDate DESC NULLS LAST, t.name ASC
+        """,
+    )
+    fun findAllActiveByIds(ids: Collection<UUID>): List<Topic>
+
     /** Backs the partial unique index, so the 409 arrives before the database does. */
     @Query(
         """

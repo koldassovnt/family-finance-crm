@@ -1,5 +1,6 @@
 package com.familyfinance.crm.dto
 
+import com.familyfinance.crm.domain.AccessLevel
 import com.familyfinance.crm.domain.GoalStatus
 import com.familyfinance.crm.domain.GoalType
 import jakarta.validation.constraints.DecimalMin
@@ -51,4 +52,8 @@ data class GoalResponse(
     val progressPercent: BigDecimal,
     /** Derived from progress, never a stored state transition. */
     val achieved: Boolean,
+    /** How you reached this: your own, or shared with you. */
+    val access: AccessLevel = AccessLevel.OWNER,
+    /** Whose it is — present only when it is not yours. */
+    val owner: UserRef? = null,
 )

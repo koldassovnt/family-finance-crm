@@ -4,6 +4,7 @@ import com.familyfinance.crm.domain.Account
 import com.familyfinance.crm.domain.Bank
 import com.familyfinance.crm.domain.BaseEntity
 import com.familyfinance.crm.domain.Category
+import com.familyfinance.crm.domain.Share
 import com.familyfinance.crm.domain.Topic
 import com.familyfinance.crm.domain.Transaction
 import com.familyfinance.crm.domain.User
@@ -11,6 +12,8 @@ import com.familyfinance.crm.repository.CategoryTotal
 import com.familyfinance.crm.service.BillWithStatus
 import com.familyfinance.crm.service.BudgetWithUsage
 import com.familyfinance.crm.service.GoalWithProgress
+import com.familyfinance.crm.service.Readable
+import com.familyfinance.crm.service.ShareSummary
 import com.familyfinance.crm.service.TopicDetail
 import com.familyfinance.crm.service.TopicWithTotals
 import java.time.YearMonth
@@ -25,6 +28,8 @@ fun User.toResponse() =
         createdAt = createdAt,
     )
 
+fun User.toRef() = UserRef(id = requiredId(), displayName = displayName)
+
 fun Bank.toResponse() = BankResponse(id = requiredId(), name = name)
 
 fun Account.toResponse() =
@@ -36,6 +41,42 @@ fun Account.toResponse() =
         currency = currency,
         bank = bank?.toResponse(),
     )
+
+/**
+ * Both badge fields come from the same [Readable] that decided them, so a
+ * response can never say it is shared without saying whose it is, or the
+ * reverse. `owner` stays null for the caller's own things — they know.
+ */
+fun Readable<Account>.toResponse() = resource.toResponse().copy(access = accessLevel, owner = sharedBy?.toRef())
+
+fun Readable<TopicWithTotals>.toTopicResponse() = resource.toResponse().copy(access = accessLevel, owner = sharedBy?.toRef())
+
+fun Readable<TopicDetail>.toTopicDetailResponse() =
+    TopicDetailResponse(
+        topic = resource.totals.toResponse().copy(access = accessLevel, owner = sharedBy?.toRef()),
+        expenseByCategory = resource.expenseByCategory.map { it.toSummary() },
+        incomeByCategory = resource.incomeByCategory.map { it.toSummary() },
+    )
+
+fun Readable<GoalWithProgress>.toGoalResponse() = resource.toResponse().copy(access = accessLevel, owner = sharedBy?.toRef())
+
+fun Readable<BudgetWithUsage>.toBudgetResponse() = resource.toResponse().copy(access = accessLevel, owner = sharedBy?.toRef())
+
+fun Readable<BillWithStatus>.toBillResponse() = resource.toResponse().copy(access = accessLevel, owner = sharedBy?.toRef())
+
+fun Share.toResponse(resourceName: String? = null) =
+    ShareResponse(
+        id = requiredId(),
+        resourceType = resourceType,
+        resourceId = resourceId,
+        resourceName = resourceName,
+        owner = owner.toRef(),
+        grantee = grantee.toRef(),
+        access = access,
+        sharedAt = createdAt,
+    )
+
+fun ShareSummary.toResponse() = share.toResponse(resourceName = resourceName)
 
 fun Category.toResponse() =
     CategoryResponse(

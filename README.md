@@ -68,12 +68,14 @@ phase doc assumes it. The frontend has its own matching set, in its own repo:
 | `.claude/requirements/phase-2-budgets-goals.md`           | built |
 | `.claude/requirements/phase-4-bills-calendar.md`          | built |
 | `.claude/requirements/phase-7-topics.md`                  | built |
-| `.claude/requirements/phase-8-sharing.md`                 | spec'd, not built |
+| `.claude/requirements/phase-8-sharing.md`                 | built |
 
-**Phases 0/1, 2, 4 and 7 are built.** Phase 7 groups a trip's or a
-renovation's transactions into one view. Phase 8 (sharing individual accounts,
-goals, budgets, bills and topics with other household members as read-only
-viewers) is spec'd and is the next thing to build.
+**Phases 0/1, 2, 4, 7 and 8 are built.** Phase 7 groups a trip's or a
+renovation's transactions into one view. Phase 8 shares one account, goal,
+budget, bill or topic at a time with another household member, read-only: the
+five list endpoints take `scope=OWN|SHARED|ALL` (defaulting to `OWN`, so
+nothing already built changed), every write path stays owner-only, and no
+shared resource ever contributes to the viewer's own totals.
 
 Phase 3 (Loans & Mortgages) was **dropped** — loans and mortgages are tracked
 as ordinary expense categories, so there was no entity left to spec. The

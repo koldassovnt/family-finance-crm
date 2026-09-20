@@ -4,6 +4,8 @@ import com.familyfinance.crm.domain.Budget
 import com.familyfinance.crm.domain.BudgetVersion
 import com.familyfinance.crm.domain.Category
 import com.familyfinance.crm.domain.CategoryKind
+import com.familyfinance.crm.domain.ShareResourceType
+import com.familyfinance.crm.domain.ShareScope
 import com.familyfinance.crm.domain.TransactionType
 import com.familyfinance.crm.domain.User
 import com.familyfinance.crm.dto.CreateBudgetRequest
@@ -29,23 +31,71 @@ class BudgetServiceImpl(
     private val budgetVersionRepository: BudgetVersionRepository,
     private val transactionRepository: TransactionRepository,
     private val categoryService: CategoryService,
+    private val shareAccess: ShareAccessService,
     private val clock: Clock,
 ) : BudgetService {
     @Transactional(readOnly = true)
     override fun list(
-        owner: User,
+        reader: User,
         month: YearMonth,
-    ): List<BudgetWithUsage> {
+        scope: ShareScope,
+    ): List<Readable<BudgetWithUsage>> {
         // A future month would report every budget at 0% with its full limit
         // remaining — indistinguishable from a real month with no spending.
         if (month.isAfter(currentMonth())) {
             throw invalidField("month", "must not be in the future")
         }
-        val versions = budgetVersionRepository.findInForce(owner, month.atDay(1))
+        val own =
+            if (scope.includesOwn) {
+                usageFor(
+                    versions = budgetVersionRepository.findInForce(reader, month.atDay(1)),
+                    owner = reader,
+                    month = month,
+                ).map { Readable.Own(it) }
+            } else {
+                emptyList()
+            }
+        val shared = if (scope.includesShared) sharedUsage(reader, month) else emptyList()
+        return own + shared
+    }
+
+    /**
+     * A shared budget reports what **its owner** spent, so usage is computed per
+     * owner rather than for the reader. This is the one place where getting the
+     * owner wrong would silently answer the wrong question instead of failing:
+     * the reader's own spending against someone else's limit.
+     */
+    private fun sharedUsage(
+        reader: User,
+        month: YearMonth,
+    ): List<Readable<BudgetWithUsage>> {
+        val grants = shareAccess.readableGrants(reader, ShareResourceType.BUDGET)
+        if (grants.isEmpty()) return emptyList()
+        val versions = budgetVersionRepository.findInForceForBudgets(grants.keys, month.atDay(1))
+        return versions
+            .groupBy { it.budget.owner }
+            .flatMap { (budgetOwner, theirVersions) ->
+                usageFor(versions = theirVersions, owner = budgetOwner, month = month)
+                    .mapNotNull { usage ->
+                        val budgetId = usage.budget.id ?: return@mapNotNull null
+                        val access = grants[budgetId] ?: return@mapNotNull null
+                        Readable.Shared(resource = usage, owner = budgetOwner, access = access)
+                    }
+            }
+    }
+
+    /**
+     * One aggregate for the whole month, rolled up per budget in memory, rather
+     * than a query per budget. [owner] is whose spending counts — always the
+     * budgets' own owner.
+     */
+    private fun usageFor(
+        versions: List<BudgetVersion>,
+        owner: User,
+        month: YearMonth,
+    ): List<BudgetWithUsage> {
         if (versions.isEmpty()) return emptyList()
         val range = monthRange(month)
-        // One aggregate for the whole month, then rolled up per budget in memory,
-        // rather than a query per budget.
         val spentByCategory =
             transactionRepository
                 .sumByCategory(owner, TransactionType.EXPENSE, range.from, range.to)
@@ -91,7 +141,7 @@ class BudgetServiceImpl(
                     effectiveToMonth = null,
                 ),
             )
-        return usageFor(version, owner)
+        return currentUsageFor(version, owner)
     }
 
     @Transactional
@@ -142,7 +192,7 @@ class BudgetServiceImpl(
                     ),
                 )
             }
-        return usageFor(effective, owner)
+        return currentUsageFor(effective, owner)
     }
 
     @Transactional
@@ -165,7 +215,8 @@ class BudgetServiceImpl(
         budget.isDeleted = true
     }
 
-    private fun getOwnedBy(
+    @Transactional(readOnly = true)
+    override fun getOwnedBy(
         id: UUID,
         owner: User,
     ): Budget {
@@ -180,7 +231,8 @@ class BudgetServiceImpl(
         budgetVersionRepository.findOpenVersion(checkNotNull(budget.id))
             ?: throw ConflictException("Budget ${budget.id} has no version in force")
 
-    private fun usageFor(
+    /** What a write returns: one version's usage this month, for its own owner. */
+    private fun currentUsageFor(
         version: BudgetVersion,
         owner: User,
     ): BudgetWithUsage {

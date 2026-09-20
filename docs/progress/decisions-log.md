@@ -7,6 +7,29 @@ the reasoning is not visible in the code.
 
 ## API
 
+**`scope` defaults to `OWN` on every list that accepts it.** Sharing added
+`scope=OWN|SHARED|ALL` to accounts, goals, budgets, bills and topics rather
+than folding shared rows into the default answer. `OWN` is the scope where
+nothing can sum across owners by accident, so it is the safe default — and it
+also means no caller written before Phase 8 changed behaviour.
+
+**A foreign resource id is always 404, never 403.** Sharing something you do
+not own, revoking someone else's grant, asking who else can see a resource you
+only view: all of them answer 404, because a 403 would confirm the id exists.
+The one 400 is sharing with yourself, which reveals nothing.
+
+**`GET /api/v1/users` is open to any authenticated member, not just the OWNER.**
+Sharing needs a picker, and in a household of a few people who already know
+each other's names, hiding the list protects nothing. It is a real widening of
+Phase 0/1, where members were invisible to each other, so it is recorded rather
+than slipped in.
+
+**Sharing a goal discloses the linked account's balance, and there is no
+partial version.** Progress is `balance ÷ targetAmount`, so a response showing
+progress and a target is one multiplication from the balance. Hiding the number
+while publishing both factors would tell the sharer they are protected when
+they are not. The share dialog names the account instead.
+
 **`GET /api/v1/transactions` exists rather than fanning out per account.**
 The frontend needed one ledger view across every account. Fanning out
 client-side meant N requests and de-duplicating transfers, which come back on
@@ -53,6 +76,21 @@ decimal places for no reason.
 empty-valued property as absent.
 
 ## Things that look like bugs and are not
+
+**A viewer sees a transaction's `toAccountId` for an account never shared with
+them.** Deliberate: sharing an account shares its history, and a transfer's
+other side is part of that. The viewer cannot resolve that id to anything, and
+the frontend must not label it as deleted — the account is healthy, it simply
+is not theirs to see. «Другой счёт», not «Удалённый счёт».
+
+**A viewer of a shared *goal* can see a balance for an account that 404s on
+`GET /accounts/{id}`.** Also deliberate, and the two rules composing is not a
+leak: the goal discloses its linked account's name, currency and balance,
+while the account itself — and its whole transaction history — stays private.
+
+**`GET /topics/{id}/candidates` is owner-only even though it is a GET.** It
+suggests the caller's own unattached transactions for attaching, which makes it
+a writing tool wearing a read verb.
 
 **A transaction keeps resolving a soft-deleted category's or topic's name.**
 Both entities deliberately lack `@SQLRestriction`, because it would apply to

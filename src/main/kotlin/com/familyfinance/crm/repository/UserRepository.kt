@@ -14,6 +14,13 @@ interface UserRepository : JpaRepository<User, UUID> {
     @Query("SELECT count(u) > 0 FROM User u WHERE lower(u.email) = lower(:email)")
     fun existsByEmailIgnoreCase(email: String): Boolean
 
+    /**
+     * The household, for the share picker. `User` is restricted, so a
+     * soft-deleted member is already absent rather than filtered here.
+     */
+    @Query("SELECT u FROM User u ORDER BY u.displayName ASC")
+    fun findAllOrdered(): List<User>
+
     fun countByRole(role: UserRole): Long
 
     /** Only the instant, so the per-request revocation check stays cheap. */

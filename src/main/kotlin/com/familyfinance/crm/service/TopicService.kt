@@ -1,5 +1,6 @@
 package com.familyfinance.crm.service
 
+import com.familyfinance.crm.domain.ShareScope
 import com.familyfinance.crm.domain.Topic
 import com.familyfinance.crm.domain.TopicStatus
 import com.familyfinance.crm.domain.Transaction
@@ -35,25 +36,42 @@ data class TopicDetail(
 )
 
 interface TopicService {
+    /** [scope] defaults to `OWN`, so this returns what it always did unless asked otherwise. */
     fun list(
-        owner: User,
+        reader: User,
         status: TopicStatus? = null,
-    ): List<TopicWithTotals>
+        scope: ShareScope = ShareScope.OWN,
+    ): List<Readable<TopicWithTotals>>
 
     fun get(
         id: UUID,
-        owner: User,
-    ): TopicDetail
+        reader: User,
+    ): Readable<TopicDetail>
 
     /**
      * Resolves a topic the caller owns, rejecting a deleted or foreign one with
      * the same 404 as a missing id. Used by the transaction service when a
      * transaction names a topic.
+     *
+     * **Every write path uses this one** — attach and detach included, since
+     * both move money into or out of a view. Its read-side twin
+     * [getReadableBy] also admits viewers.
      */
     fun getOwnedBy(
         id: UUID,
         owner: User,
     ): Topic
+
+    /**
+     * Resolves a topic the caller may **read** — their own, or one shared with
+     * them. The widest of the five shares: a topic is a lens over transactions,
+     * so a viewer reaching it can also read [transactions] on accounts that were
+     * never shared with them. Read paths only.
+     */
+    fun getReadableBy(
+        id: UUID,
+        reader: User,
+    ): Readable<Topic>
 
     fun create(
         owner: User,
@@ -72,13 +90,20 @@ interface TopicService {
         owner: User,
     )
 
-    /** Everything attached, newest first; no date range, membership is the bound. */
+    /**
+     * Everything attached, newest first; no date range, membership is the bound.
+     * Readable by a viewer of the topic — sharing the lens shares what it frames.
+     */
     fun transactions(
         id: UUID,
-        owner: User,
+        reader: User,
     ): List<Transaction>
 
-    /** Unattached income/expense inside the topic's declared window. */
+    /**
+     * Unattached income/expense inside the topic's declared window. **Owner
+     * only**, even though it reads: it suggests the caller's own transactions to
+     * attach, which is a writing tool rather than a view.
+     */
     fun candidates(
         id: UUID,
         owner: User,

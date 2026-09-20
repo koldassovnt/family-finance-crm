@@ -1,5 +1,6 @@
 package com.familyfinance.crm.dto
 
+import com.familyfinance.crm.domain.AccessLevel
 import com.familyfinance.crm.domain.BudgetPeriod
 import jakarta.validation.constraints.DecimalMin
 import jakarta.validation.constraints.Max
@@ -50,4 +51,8 @@ data class BudgetResponse(
     val remaining: BigDecimal,
     /** Deliberately not capped at 100: the UI needs to see how far past the limit this is. */
     val percentUsed: BigDecimal,
+    /** How you reached this: your own, or shared with you. */
+    val access: AccessLevel = AccessLevel.OWNER,
+    /** Whose it is — present only when it is not yours. Usage is then *their* spending. */
+    val owner: UserRef? = null,
 )

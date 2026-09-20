@@ -12,10 +12,14 @@ import com.familyfinance.crm.domain.CategoryKind
 import com.familyfinance.crm.domain.Goal
 import com.familyfinance.crm.domain.GoalStatus
 import com.familyfinance.crm.domain.GoalType
+import com.familyfinance.crm.domain.Share
+import com.familyfinance.crm.domain.ShareAccess
+import com.familyfinance.crm.domain.ShareResourceType
 import com.familyfinance.crm.domain.Topic
 import com.familyfinance.crm.domain.TopicStatus
 import com.familyfinance.crm.domain.User
 import com.familyfinance.crm.domain.UserRole
+import com.familyfinance.crm.service.Readable
 import java.math.BigDecimal
 import java.time.Clock
 import java.time.Instant
@@ -30,6 +34,9 @@ val ALMATY: ZoneId = ZoneId.of("Asia/Almaty")
 fun fixedClock(today: LocalDate = LocalDate.of(2026, 9, 10)): Clock = Clock.fixed(today.atTime(12, 0).atZone(ALMATY).toInstant(), ALMATY)
 
 fun <T : BaseEntity> T.withId(id: UUID = UUID.randomUUID()): T = apply { this.id = id }
+
+/** Most tests assert on what a list returned, not on how the caller reached it. */
+val <T> List<Readable<T>>.resources: List<T> get() = map { it.resource }
 
 /** Fixture entities are always given an id, so unwrapping it is safe here. */
 val BaseEntity.idValue: UUID get() = checkNotNull(id)
@@ -137,6 +144,21 @@ fun topic(
         endDate = endDate,
         plannedAmount = plannedAmount?.let(::BigDecimal),
         status = status,
+    ).withId(id)
+
+fun share(
+    owner: User,
+    grantee: User,
+    resourceType: ShareResourceType,
+    resourceId: UUID,
+    id: UUID = UUID.randomUUID(),
+): Share =
+    Share(
+        resourceType = resourceType,
+        resourceId = resourceId,
+        owner = owner,
+        grantee = grantee,
+        access = ShareAccess.VIEWER,
     ).withId(id)
 
 fun bill(

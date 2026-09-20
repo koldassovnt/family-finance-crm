@@ -2,6 +2,8 @@ package com.familyfinance.crm.service
 
 import com.familyfinance.crm.bill
 import com.familyfinance.crm.domain.Bill
+import com.familyfinance.crm.domain.ShareResourceType
+import com.familyfinance.crm.domain.ShareScope
 import com.familyfinance.crm.dto.CreateBillBatchRequest
 import com.familyfinance.crm.dto.CreateBillRequest
 import com.familyfinance.crm.dto.UpdateBillRequest
@@ -10,6 +12,9 @@ import com.familyfinance.crm.exception.ValidationException
 import com.familyfinance.crm.fixedClock
 import com.familyfinance.crm.idValue
 import com.familyfinance.crm.repository.BillRepository
+import com.familyfinance.crm.repository.ShareRepository
+import com.familyfinance.crm.resources
+import com.familyfinance.crm.share
 import com.familyfinance.crm.user
 import com.familyfinance.crm.withId
 import io.mockk.every
@@ -19,7 +24,6 @@ import org.junit.jupiter.api.assertThrows
 import java.math.BigDecimal
 import java.time.LocalDate
 import java.time.YearMonth
-import java.util.Optional
 import java.util.UUID
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -29,7 +33,9 @@ import kotlin.test.assertTrue
 class BillServiceImplTest {
     private val billRepository = mockk<BillRepository>()
     private val today = LocalDate.of(2026, 9, 10)
-    private val service = BillServiceImpl(billRepository, fixedClock(today))
+    private val shareRepository = mockk<ShareRepository>()
+    private val shareAccess = ShareAccessServiceImpl(shareRepository)
+    private val service = BillServiceImpl(billRepository, shareAccess, fixedClock(today))
     private val owner = user()
 
     init {
@@ -44,7 +50,13 @@ class BillServiceImplTest {
         val subject = bill(owner, dueDate = today.minusDays(1))
         every { billRepository.findAllByOwnerOrderByDueDateAscNameAsc(owner) } returns listOf(subject)
 
-        assertTrue(service.list(owner, month = null, unpaid = null).single().overdue)
+        assertTrue(
+            service
+                .list(owner, month = null, unpaid = null)
+                .resources
+                .single()
+                .overdue,
+        )
     }
 
     @Test
@@ -52,7 +64,13 @@ class BillServiceImplTest {
         val subject = bill(owner, dueDate = today.minusDays(1), isPaid = true)
         every { billRepository.findAllByOwnerOrderByDueDateAscNameAsc(owner) } returns listOf(subject)
 
-        assertFalse(service.list(owner, month = null, unpaid = null).single().overdue)
+        assertFalse(
+            service
+                .list(owner, month = null, unpaid = null)
+                .resources
+                .single()
+                .overdue,
+        )
     }
 
     @Test
@@ -60,7 +78,13 @@ class BillServiceImplTest {
         val subject = bill(owner, dueDate = today)
         every { billRepository.findAllByOwnerOrderByDueDateAscNameAsc(owner) } returns listOf(subject)
 
-        assertFalse(service.list(owner, month = null, unpaid = null).single().overdue)
+        assertFalse(
+            service
+                .list(owner, month = null, unpaid = null)
+                .resources
+                .single()
+                .overdue,
+        )
     }
 
     @Test
@@ -89,7 +113,7 @@ class BillServiceImplTest {
         every { billRepository.findAllByOwnerAndIsPaidOrderByDueDateAscNameAsc(owner, false) } returns
             listOf(overdue, upcoming)
 
-        val listed = service.list(owner, month = null, unpaid = true)
+        val listed = service.list(owner, month = null, unpaid = true).resources
 
         // The August bill is exactly what a September month view cannot show.
         assertEquals(listOf("Electricity", "Netflix"), listed.map { it.bill.name })
@@ -209,7 +233,7 @@ class BillServiceImplTest {
         val batchId = UUID.randomUUID()
         val first = bill(owner, dueDate = LocalDate.of(2026, 9, 15), batchId = batchId)
         val sibling = bill(owner, dueDate = LocalDate.of(2026, 10, 15), batchId = batchId)
-        every { billRepository.findById(first.idValue) } returns Optional.of(first)
+        every { billRepository.findDetailedById(first.idValue) } returns first
 
         val updated =
             service.update(first.idValue, owner, UpdateBillRequest(amount = BigDecimal("99000"), isPaid = true))
@@ -224,7 +248,7 @@ class BillServiceImplTest {
     @Test
     fun `refuses to change a bill's currency without restating the amount`() {
         val subject = bill(owner, amount = "12000")
-        every { billRepository.findById(subject.idValue) } returns Optional.of(subject)
+        every { billRepository.findDetailedById(subject.idValue) } returns subject
 
         // 12000 KZT silently becoming 12000 USD is a ~480x rewrite.
         val error =
@@ -239,7 +263,7 @@ class BillServiceImplTest {
     @Test
     fun `allows a currency change when the amount is restated with it`() {
         val subject = bill(owner, amount = "12000")
-        every { billRepository.findById(subject.idValue) } returns Optional.of(subject)
+        every { billRepository.findDetailedById(subject.idValue) } returns subject
 
         val updated =
             service.update(
@@ -255,7 +279,7 @@ class BillServiceImplTest {
     @Test
     fun `restating the same currency alone is not a change`() {
         val subject = bill(owner, amount = "12000")
-        every { billRepository.findById(subject.idValue) } returns Optional.of(subject)
+        every { billRepository.findDetailedById(subject.idValue) } returns subject
 
         val updated = service.update(subject.idValue, owner, UpdateBillRequest(currency = "kzt"))
 
@@ -265,7 +289,7 @@ class BillServiceImplTest {
     @Test
     fun `rejects a blank name on update`() {
         val subject = bill(owner)
-        every { billRepository.findById(subject.idValue) } returns Optional.of(subject)
+        every { billRepository.findDetailedById(subject.idValue) } returns subject
 
         // @NotBlank cannot guard an optional PATCH field, so the service must.
         assertThrows<ValidationException> {
@@ -296,7 +320,7 @@ class BillServiceImplTest {
     @Test
     fun `returns 404 for a bill owned by someone else`() {
         val theirs = bill(user(email = "other@example.com"))
-        every { billRepository.findById(theirs.idValue) } returns Optional.of(theirs)
+        every { billRepository.findDetailedById(theirs.idValue) } returns theirs
 
         assertThrows<NotFoundException> {
             service.update(theirs.idValue, owner, UpdateBillRequest(isPaid = true))
@@ -306,11 +330,81 @@ class BillServiceImplTest {
     @Test
     fun `soft deletes rather than removing the row`() {
         val subject = bill(owner)
-        every { billRepository.findById(subject.idValue) } returns Optional.of(subject)
+        every { billRepository.findDetailedById(subject.idValue) } returns subject
 
         service.softDelete(subject.idValue, owner)
 
         assertTrue(subject.isDeleted)
+    }
+
+    // Phase 8 — sharing. A bug in any of these is a disclosure, not a wrong number.
+
+    private val viewer = user(email = "viewer@example.com")
+
+    @Test
+    fun `a viewer sees a bill shared with them, badged with its owner`() {
+        val theirs = bill(owner, name = "Water", dueDate = today)
+        every { shareRepository.findAllGrantsTo(viewer, ShareResourceType.BILL) } returns
+            listOf(share(owner, viewer, ShareResourceType.BILL, theirs.idValue))
+        every { billRepository.findAllDetailedByIds(setOf(theirs.idValue)) } returns listOf(theirs)
+
+        val listed = service.list(viewer, month = null, unpaid = null, scope = ShareScope.SHARED)
+
+        assertEquals(listOf("Water"), listed.map { it.resource.bill.name })
+        assertEquals(listOf(owner), listed.map { it.sharedBy })
+    }
+
+    @Test
+    fun `the month filter applies to shared bills exactly as to your own`() {
+        val september = bill(owner, name = "Water", dueDate = LocalDate.of(2026, 9, 15))
+        val october = bill(owner, name = "Gas", dueDate = LocalDate.of(2026, 10, 15))
+        every { shareRepository.findAllGrantsTo(viewer, ShareResourceType.BILL) } returns
+            listOf(
+                share(owner, viewer, ShareResourceType.BILL, september.idValue),
+                share(owner, viewer, ShareResourceType.BILL, october.idValue),
+            )
+        every { billRepository.findAllDetailedByIds(any()) } returns listOf(september, october)
+
+        val listed =
+            service.list(viewer, month = YearMonth.of(2026, 9), unpaid = null, scope = ShareScope.SHARED)
+
+        assertEquals(listOf("Water"), listed.map { it.resource.bill.name })
+    }
+
+    @Test
+    fun `the unpaid filter applies to shared bills exactly as to your own`() {
+        val paid = bill(owner, name = "Water", isPaid = true)
+        val unpaid = bill(owner, name = "Gas")
+        every { shareRepository.findAllGrantsTo(viewer, ShareResourceType.BILL) } returns
+            listOf(
+                share(owner, viewer, ShareResourceType.BILL, paid.idValue),
+                share(owner, viewer, ShareResourceType.BILL, unpaid.idValue),
+            )
+        every { billRepository.findAllDetailedByIds(any()) } returns listOf(paid, unpaid)
+
+        val listed = service.list(viewer, month = null, unpaid = true, scope = ShareScope.SHARED)
+
+        assertEquals(listOf("Gas"), listed.map { it.resource.bill.name })
+    }
+
+    @Test
+    fun `a viewer cannot mark a bill shared with them as paid`() {
+        val theirs = bill(owner)
+        every { billRepository.findDetailedById(theirs.idValue) } returns theirs
+
+        assertThrows<NotFoundException> {
+            service.update(theirs.idValue, viewer, UpdateBillRequest(isPaid = true))
+        }
+        assertFalse(theirs.isPaid)
+    }
+
+    @Test
+    fun `a viewer cannot delete a bill shared with them`() {
+        val theirs = bill(owner)
+        every { billRepository.findDetailedById(theirs.idValue) } returns theirs
+
+        assertThrows<NotFoundException> { service.softDelete(theirs.idValue, viewer) }
+        assertFalse(theirs.isDeleted)
     }
 
     private fun batchRequest(

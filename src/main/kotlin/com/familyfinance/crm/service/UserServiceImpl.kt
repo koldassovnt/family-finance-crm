@@ -24,6 +24,9 @@ class UserServiceImpl(
     override fun getById(id: UUID): User = userRepository.findById(id).orElseThrow { NotFoundException("User $id was not found") }
 
     @Transactional(readOnly = true)
+    override fun listMembers(): List<User> = userRepository.findAllOrdered()
+
+    @Transactional(readOnly = true)
     override fun authenticate(
         email: String,
         password: String,

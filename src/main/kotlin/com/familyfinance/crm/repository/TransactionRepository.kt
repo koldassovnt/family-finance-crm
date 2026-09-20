@@ -156,8 +156,13 @@ interface TransactionRepository : JpaRepository<Transaction, UUID> {
     ): List<Transaction>
 
     /**
-     * Per-topic totals for one owner in a single query — the list view needs
-     * them for every topic at once, and a sum per topic would be N+1.
+     * Per-topic totals for a set of topics in a single query — the list view
+     * needs them for every topic at once, and a sum per topic would be N+1.
+     *
+     * Scoped by membership rather than by owner: only the topic's owner can
+     * attach their own transactions to it, so the two are equivalent for an
+     * owner — and membership is also what lets a *viewer* of a shared topic read
+     * its totals without the query knowing whose transactions they are.
      */
     @Query(
         """
@@ -168,12 +173,12 @@ interface TransactionRepository : JpaRepository<Transaction, UUID> {
                min(t.occurredOn) AS firstTransactionOn,
                max(t.occurredOn) AS lastTransactionOn
         FROM Transaction t
-        WHERE t.account.owner = :owner AND t.topic IS NOT NULL
+        WHERE t.topic IN :topics
         GROUP BY t.topic.id
         """,
     )
-    fun sumByTopic(
-        owner: User,
+    fun sumForTopics(
+        topics: Collection<Topic>,
         expense: TransactionType,
         income: TransactionType,
     ): List<TopicTotals>

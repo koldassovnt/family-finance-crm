@@ -2,6 +2,7 @@ package com.familyfinance.crm.service
 
 import com.familyfinance.crm.domain.Budget
 import com.familyfinance.crm.domain.BudgetVersion
+import com.familyfinance.crm.domain.ShareScope
 import com.familyfinance.crm.domain.User
 import com.familyfinance.crm.dto.CreateBudgetRequest
 import com.familyfinance.crm.dto.UpdateBudgetRequest
@@ -26,11 +27,25 @@ interface BudgetService {
     /**
      * The budgets that were in force in [month], each with that month's limit
      * and usage. Budgets that did not exist yet are simply absent.
+     *
+     * [scope] defaults to `OWN`; a budget has no detail endpoint, so this list
+     * is also the read path a viewer uses. A shared budget's usage is its
+     * **owner's** spending — a viewer's own figures are never touched by it.
      */
     fun list(
-        owner: User,
+        reader: User,
         month: YearMonth,
-    ): List<BudgetWithUsage>
+        scope: ShareScope = ShareScope.OWN,
+    ): List<Readable<BudgetWithUsage>>
+
+    /**
+     * Resolves a budget the caller owns; someone else's 404s like a missing one.
+     * Every write path uses this, and a budget is only ever read through [list].
+     */
+    fun getOwnedBy(
+        id: UUID,
+        owner: User,
+    ): Budget
 
     fun create(
         owner: User,

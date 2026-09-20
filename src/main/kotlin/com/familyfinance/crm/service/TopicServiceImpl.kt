@@ -1,5 +1,7 @@
 package com.familyfinance.crm.service
 
+import com.familyfinance.crm.domain.ShareResourceType
+import com.familyfinance.crm.domain.ShareScope
 import com.familyfinance.crm.domain.Topic
 import com.familyfinance.crm.domain.TopicStatus
 import com.familyfinance.crm.domain.Transaction
@@ -12,6 +14,7 @@ import com.familyfinance.crm.exception.NotFoundException
 import com.familyfinance.crm.exception.ValidationException
 import com.familyfinance.crm.exception.invalidField
 import com.familyfinance.crm.repository.TopicRepository
+import com.familyfinance.crm.repository.TopicTotals
 import com.familyfinance.crm.repository.TransactionRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -23,53 +26,59 @@ import java.util.UUID
 class TopicServiceImpl(
     private val topicRepository: TopicRepository,
     private val transactionRepository: TransactionRepository,
+    private val shareAccess: ShareAccessService,
 ) : TopicService {
     @Transactional(readOnly = true)
     override fun list(
-        owner: User,
+        reader: User,
         status: TopicStatus?,
-    ): List<TopicWithTotals> {
-        val topics =
-            if (status == null) {
-                topicRepository.findAllActiveByOwner(owner)
+        scope: ShareScope,
+    ): List<Readable<TopicWithTotals>> {
+        val own =
+            if (scope.includesOwn) {
+                if (status == null) {
+                    topicRepository.findAllActiveByOwner(reader)
+                } else {
+                    topicRepository.findAllByOwnerAndStatus(reader, status)
+                }.map { Readable.Own(it) }
             } else {
-                topicRepository.findAllByOwnerAndStatus(owner, status)
+                emptyList()
             }
-        // One aggregate query for every topic this owner has, rather than a
-        // sum per row.
-        val totals =
-            transactionRepository
-                .sumByTopic(
-                    owner = owner,
-                    expense = TransactionType.EXPENSE,
-                    income = TransactionType.INCOME,
-                ).associateBy { it.topicId }
-        return topics.map { topic ->
-            val row = totals[topic.id]
-            TopicWithTotals(
-                topic = topic,
-                spent = row?.spent ?: BigDecimal.ZERO,
-                received = row?.received ?: BigDecimal.ZERO,
-                transactionCount = row?.transactionCount ?: 0,
-                firstTransactionOn = row?.firstTransactionOn,
-                lastTransactionOn = row?.lastTransactionOn,
-            )
-        }
+        val shared =
+            if (scope.includesShared) {
+                shareAccess
+                    .sharedWith(
+                        reader = reader,
+                        resourceType = ShareResourceType.TOPIC,
+                        load = topicRepository::findAllActiveByIds,
+                        ownerOf = Topic::owner,
+                    ).filter { status == null || it.resource.status == status }
+            } else {
+                emptyList()
+            }
+        val readable = own + shared
+        // One aggregate query for every topic on the page, own and shared alike,
+        // rather than a sum per row.
+        val totals = totalsByTopic(readable.map { it.resource })
+        return readable.map { entry -> entry.map { topic -> totals.forTopic(topic) } }
     }
 
     @Transactional(readOnly = true)
     override fun get(
         id: UUID,
-        owner: User,
-    ): TopicDetail {
-        val topic = getOwnedBy(id, owner)
-        return TopicDetail(
-            totals = totalsFor(topic, owner),
-            expenseByCategory =
-                transactionRepository.sumByTopicAndCategory(topic, TransactionType.EXPENSE),
-            incomeByCategory =
-                transactionRepository.sumByTopicAndCategory(topic, TransactionType.INCOME),
-        )
+        reader: User,
+    ): Readable<TopicDetail> {
+        val readable = getReadableBy(id, reader)
+        val topic = readable.resource
+        return readable.map {
+            TopicDetail(
+                totals = totalsFor(topic),
+                expenseByCategory =
+                    transactionRepository.sumByTopicAndCategory(topic, TransactionType.EXPENSE),
+                incomeByCategory =
+                    transactionRepository.sumByTopicAndCategory(topic, TransactionType.INCOME),
+            )
+        }
     }
 
     @Transactional(readOnly = true)
@@ -77,11 +86,27 @@ class TopicServiceImpl(
         id: UUID,
         owner: User,
     ): Topic {
-        val topic =
-            topicRepository.findById(id).orElseThrow { NotFoundException("Topic $id was not found") }
         // Deleted and foreign topics are both simply "not found", so ids can't be probed.
-        if (topic.isDeleted || topic.owner != owner) throw NotFoundException("Topic $id was not found")
+        val topic =
+            topicRepository.findActiveById(id) ?: throw NotFoundException("Topic $id was not found")
+        if (topic.owner != owner) throw NotFoundException("Topic $id was not found")
         return topic
+    }
+
+    @Transactional(readOnly = true)
+    override fun getReadableBy(
+        id: UUID,
+        reader: User,
+    ): Readable<Topic> {
+        val topic =
+            topicRepository.findActiveById(id) ?: throw NotFoundException("Topic $id was not found")
+        return shareAccess.readableBy(
+            reader = reader,
+            resource = topic,
+            owner = topic.owner,
+            resourceType = ShareResourceType.TOPIC,
+            resourceId = id,
+        ) ?: throw NotFoundException("Topic $id was not found")
     }
 
     @Transactional
@@ -130,7 +155,7 @@ class TopicServiceImpl(
             topic.plannedAmount = it.orElse(null)?.let(::requirePositivePlannedAmount)
         }
         request.status?.let { topic.status = it }
-        return totalsFor(topic, owner)
+        return totalsFor(topic)
     }
 
     @Transactional
@@ -146,8 +171,8 @@ class TopicServiceImpl(
     @Transactional(readOnly = true)
     override fun transactions(
         id: UUID,
-        owner: User,
-    ): List<Transaction> = transactionRepository.findAllByTopic(getOwnedBy(id, owner))
+        reader: User,
+    ): List<Transaction> = transactionRepository.findAllByTopic(getReadableBy(id, reader).resource)
 
     @Transactional(readOnly = true)
     override fun candidates(
@@ -221,17 +246,24 @@ class TopicServiceImpl(
         transaction.topic = null
     }
 
-    private fun totalsFor(
-        topic: Topic,
-        owner: User,
-    ): TopicWithTotals {
-        val row =
+    private fun totalsFor(topic: Topic): TopicWithTotals = totalsByTopic(listOf(topic)).forTopic(topic)
+
+    /** One aggregate for a whole page of topics; an empty page never reaches a query. */
+    private fun totalsByTopic(topics: List<Topic>): Map<UUID, TopicTotals> =
+        if (topics.isEmpty()) {
+            emptyMap()
+        } else {
             transactionRepository
-                .sumByTopic(
-                    owner = owner,
+                .sumForTopics(
+                    topics = topics,
                     expense = TransactionType.EXPENSE,
                     income = TransactionType.INCOME,
-                ).firstOrNull { it.topicId == topic.id }
+                ).associateBy { it.topicId }
+        }
+
+    /** A topic with nothing attached has no aggregate row, which reads as zeros. */
+    private fun Map<UUID, TopicTotals>.forTopic(topic: Topic): TopicWithTotals {
+        val row = topic.id?.let { this[it] }
         return TopicWithTotals(
             topic = topic,
             spent = row?.spent ?: BigDecimal.ZERO,

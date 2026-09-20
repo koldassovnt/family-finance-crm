@@ -1,5 +1,6 @@
 package com.familyfinance.crm.dto
 
+import com.familyfinance.crm.domain.AccessLevel
 import com.familyfinance.crm.domain.AccountType
 import com.familyfinance.crm.domain.BASE_CURRENCY
 import jakarta.validation.constraints.NotBlank
@@ -54,4 +55,8 @@ data class AccountResponse(
     val balance: BigDecimal,
     val currency: String,
     val bank: BankResponse?,
+    /** How you reached this: your own, or shared with you. */
+    val access: AccessLevel = AccessLevel.OWNER,
+    /** Whose it is — present only when it is not yours. */
+    val owner: UserRef? = null,
 )

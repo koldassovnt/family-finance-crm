@@ -1,6 +1,8 @@
 package com.familyfinance.crm.service
 
 import com.familyfinance.crm.domain.Bill
+import com.familyfinance.crm.domain.ShareResourceType
+import com.familyfinance.crm.domain.ShareScope
 import com.familyfinance.crm.domain.User
 import com.familyfinance.crm.dto.CreateBillBatchRequest
 import com.familyfinance.crm.dto.CreateBillRequest
@@ -21,10 +23,32 @@ import java.util.UUID
 @Service
 class BillServiceImpl(
     private val billRepository: BillRepository,
+    private val shareAccess: ShareAccessService,
     private val clock: Clock,
 ) : BillService {
     @Transactional(readOnly = true)
     override fun list(
+        reader: User,
+        month: YearMonth?,
+        unpaid: Boolean?,
+        scope: ShareScope,
+    ): List<Readable<BillWithStatus>> {
+        val own =
+            if (scope.includesOwn) {
+                listOwn(reader, month, unpaid).map { Readable.Own(it) }
+            } else {
+                emptyList()
+            }
+        val shared =
+            if (scope.includesShared) {
+                listShared(reader, month, unpaid)
+            } else {
+                emptyList()
+            }
+        return own + shared
+    }
+
+    private fun listOwn(
         owner: User,
         month: YearMonth?,
         unpaid: Boolean?,
@@ -60,6 +84,31 @@ class BillServiceImpl(
                 }
             }
         return bills.map(::withStatus)
+    }
+
+    /**
+     * The same two filters, applied in memory. A viewer holds a handful of
+     * shared bills, so one lookup by id and a filter here beats four more
+     * derived queries duplicating the combinations above.
+     */
+    private fun listShared(
+        reader: User,
+        month: YearMonth?,
+        unpaid: Boolean?,
+    ): List<Readable<BillWithStatus>> {
+        val range = month?.let { monthRange(it) }
+        return shareAccess
+            .sharedWith(
+                reader = reader,
+                resourceType = ShareResourceType.BILL,
+                load = billRepository::findAllDetailedByIds,
+                ownerOf = Bill::owner,
+            ).filter { readable ->
+                val bill = readable.resource
+                val inMonth = range == null || bill.dueDate in range.from..range.to
+                val matchesPaid = unpaid == null || bill.isPaid != unpaid
+                inMonth && matchesPaid
+            }.map { readable -> readable.map(::withStatus) }
     }
 
     @Transactional
@@ -172,12 +221,13 @@ class BillServiceImpl(
         bills.forEach { it.isDeleted = true }
     }
 
-    private fun getOwnedBy(
+    @Transactional(readOnly = true)
+    override fun getOwnedBy(
         id: UUID,
         owner: User,
     ): Bill {
         val bill =
-            billRepository.findById(id).orElseThrow { NotFoundException("Bill $id was not found") }
+            billRepository.findDetailedById(id) ?: throw NotFoundException("Bill $id was not found")
         if (bill.owner != owner) throw NotFoundException("Bill $id was not found")
         return bill
     }

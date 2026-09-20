@@ -4,6 +4,7 @@ import com.familyfinance.crm.account
 import com.familyfinance.crm.category
 import com.familyfinance.crm.domain.Account
 import com.familyfinance.crm.domain.CategoryKind
+import com.familyfinance.crm.domain.ShareAccess
 import com.familyfinance.crm.domain.Transaction
 import com.familyfinance.crm.domain.TransactionType
 import com.familyfinance.crm.dto.CreateTransactionRequest
@@ -525,6 +526,22 @@ class TransactionServiceImplTest {
                     toAmount = BigDecimal(toAmount),
                 ),
             ).also { every { transactionRepository.findDetailedById(it.idValue) } returns it }
+    }
+
+    // Phase 8 — sharing. History is the one read path here; everything else writes.
+
+    @Test
+    fun `history is readable by a viewer of the account, since a balance alone explains nothing`() {
+        val viewer = user(email = "viewer@example.com")
+        val theirs = account(owner)
+        val row = transaction(TransactionType.EXPENSE, theirs, "100")
+        every { accountService.getReadableBy(theirs.idValue, viewer) } returns
+            Readable.Shared(resource = theirs, owner = owner, access = ShareAccess.VIEWER)
+        every { transactionRepository.findHistory(theirs, today.minusDays(7), today) } returns listOf(row)
+
+        val history = service.history(theirs.idValue, viewer, today.minusDays(7), today)
+
+        assertEquals(listOf(row), history)
     }
 
     private fun transaction(

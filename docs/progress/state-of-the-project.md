@@ -1,7 +1,7 @@
 # State of the project
 
-As of **2026-09-19**. Backend `main` at `ca35706`; the frontend was at
-`c97dd64` when this was written and moves on its own.
+As of **2026-09-20**. Backend `main` at `827def4` plus the Phase 8 commit;
+the frontend was at `c97dd64` when this was written and moves on its own.
 
 ## Backend — every in-scope phase is built
 
@@ -14,22 +14,29 @@ As of **2026-09-19**. Backend `main` at `ca35706`; the frontend was at
 | 5 | Investment portfolio | Spec'd, **out of scope** |
 | 6 | Net worth and reporting | Spec'd, **out of scope** |
 | 7 | Topics — a trip's or renovation's transactions as one view | Built |
-| 8 | Sharing a single account/goal/budget/bill/topic with another member, read-only | **Spec'd, next** |
+| 8 | Sharing a single account/goal/budget/bill/topic with another member, read-only | Built |
 
 The original Phase 7 (*Automation & Family Access*) was dropped and its number
 reused by topics. Phases 5 and 6 keep theirs.
 
-**Migrations run to `V7`.** V1 initial schema, V2 budgets/goals, V3 transaction
+**Migrations run to `V8`.** V1 initial schema, V2 budgets/goals, V3 transaction
 exchange rate, V4 budget versions, V5 goal archived + password rotation,
-V6 bills, V7 topics.
+V6 bills, V7 topics, V8 shares.
 
-**Tests: 144, all passing**, unit-only with MockK. Integration tests are
+**Tests: 194, all passing**, unit-only with MockK. Integration tests are
 deliberately deferred by the requirements until there is a frontend and a
 Telegram bot to test against — which is now half true, so this is worth
 revisiting rather than treating as settled.
 
 ### Endpoints added most recently
 
+- The `/api/v1/shares` family (Phase 8): `GET` for who one resource is shared
+  with (owner only), `POST` to grant, `DELETE` to revoke, plus `/incoming` and
+  `/outgoing` across all five types. `GET /api/v1/users` now lists the
+  household for the share picker, readable by any member.
+- `scope=OWN|SHARED|ALL` on `/accounts`, `/goals`, `/budgets`, `/bills` and
+  `/topics`, defaulting to `OWN` so no existing caller changed. Responses in
+  those lists carry `access` and, when `VIEWER`, `owner: {id, displayName}`.
 - `GET /api/v1/transactions` — the cross-account ledger list. `from`/`to`
   required, one-year cap, optional `accountId`, `categoryId`, `topicId`.
 - `GET /api/v1/users/me` — so a client holding a stored token can re-establish
@@ -55,12 +62,32 @@ users, password.
 
 ## What is actually left
 
-**Phase 8 (sharing) is spec'd and is the next thing to build** — see
-`../../.claude/requirements/phase-8-sharing.md`. It is the first feature where
-a bug is a disclosure rather than a wrong number: it breaks the single-owner
-rule that every `getOwnedBy` check depends on, so read that doc before touching
-any access path. It carries three flagged assumptions, all about how much a
-share exposes.
+**Phase 8 (sharing) is built on the backend and not yet in the frontend** —
+see `../../.claude/requirements/phase-8-sharing.md`, and read it before touching
+any access path: this is the feature where a bug is a disclosure rather than a
+wrong number, and it is the first crack in the single-owner rule every
+`getOwnedBy` depended on.
+
+What that means in the code, so the next session does not have to rediscover it:
+
+- **`getOwnedBy` and `getReadableBy` are deliberately separate on every
+  service, and must stay that way.** The first is the only one any write path
+  may call; the second also admits viewers. Reusing the read helper in a write
+  path is precisely how this turns into a data breach, so neither is a default
+  for the other.
+- `Readable<T>` is a sealed `Own`/`Shared` pair, and the access badge and the
+  owner on a response both come from it — a response cannot claim to be shared
+  without saying whose it is.
+- `ShareAccessService` (the read side) is what the five resource services
+  depend on; `ShareService` (grant/revoke) depends on *them*, through
+  `ShareableResourceService`, so the dependency runs one way.
+- **A shared budget's usage is its owner's spending**, computed per owner.
+  Getting that wrong would answer the wrong question silently rather than fail,
+  which is why it has its own test.
+- Its three flagged assumptions are now decided in the doc: goal sharing
+  discloses the linked account's balance (binary, no percentage-only middle
+  ground), `GET /api/v1/users` is open to any member, and deleting a member
+  must leave no resolvable path from a live row to their `User`.
 
 Otherwise nothing is half-built. These are open by choice:
 
@@ -70,7 +97,9 @@ Otherwise nothing is half-built. These are open by choice:
 2. **Phase 7's open assumption** — one topic per transaction, built that way.
    A join table would let one expense sit in two topics, at the cost of every
    cross-topic total double-counting it.
-3. **Integration tests** — see above.
+3. **Integration tests** — see above, and now more pointedly: Phase 8's access
+   control was driven by hand against a real Postgres once but has no automated
+   Testcontainers pass. That is the first thing to add if sharing is touched.
 4. **Two frontend paths never exercised from the UI**, recorded in the
    frontend's `docs/progress/settings.md`: deleting a category blocked by a
    budget or by children (409 both times), and changing a password (doing so

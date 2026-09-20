@@ -26,3 +26,38 @@ enum class TopicStatus { ACTIVE, CLOSED }
  * or archived. Only `ACTIVE` goals block deleting their linked account.
  */
 enum class GoalStatus { ACTIVE, ABANDONED, ARCHIVED }
+
+/** The five things a share can point at — see `phase-8-sharing.md`. */
+enum class ShareResourceType { ACCOUNT, GOAL, BUDGET, BILL, TOPIC }
+
+/**
+ * What a grant confers. `VIEWER` only, like [BudgetPeriod], so an `EDITOR`
+ * would later be a new value rather than a new concept.
+ */
+enum class ShareAccess { VIEWER, }
+
+/**
+ * How the caller reached a resource: as its owner, or through a share. Every
+ * [ShareAccess] value needs a counterpart here, which [asAccessLevel] keeps
+ * honest — adding `EDITOR` above stops compiling until it is handled.
+ */
+enum class AccessLevel { OWNER, VIEWER }
+
+fun ShareAccess.asAccessLevel(): AccessLevel =
+    when (this) {
+        ShareAccess.VIEWER -> AccessLevel.VIEWER
+    }
+
+/**
+ * Which resources a list endpoint returns. `OWN` is the default everywhere,
+ * because it is the scope where nothing can sum across owners by accident.
+ */
+enum class ShareScope {
+    OWN,
+    SHARED,
+    ALL,
+    ;
+
+    val includesOwn: Boolean get() = this != SHARED
+    val includesShared: Boolean get() = this != OWN
+}

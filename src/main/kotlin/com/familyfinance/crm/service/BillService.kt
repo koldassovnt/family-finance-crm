@@ -1,6 +1,7 @@
 package com.familyfinance.crm.service
 
 import com.familyfinance.crm.domain.Bill
+import com.familyfinance.crm.domain.ShareScope
 import com.familyfinance.crm.domain.User
 import com.familyfinance.crm.dto.CreateBillBatchRequest
 import com.familyfinance.crm.dto.CreateBillRequest
@@ -23,12 +24,26 @@ interface BillService {
      * The two are independent: `month` alone is the calendar grid, and `unpaid`
      * alone is what's still owed — including bills that fell due in an earlier
      * month, which a month view by definition cannot show.
+     *
+     * [scope] defaults to `OWN`. A bill has no detail endpoint of its own, so
+     * this list is also the read path a viewer uses; both filters apply to
+     * shared bills exactly as they do to the caller's own.
      */
     fun list(
-        owner: User,
+        reader: User,
         month: YearMonth?,
         unpaid: Boolean?,
-    ): List<BillWithStatus>
+        scope: ShareScope = ShareScope.OWN,
+    ): List<Readable<BillWithStatus>>
+
+    /**
+     * Resolves a bill the caller owns; someone else's 404s like a missing one.
+     * Every write path uses this, and a bill is only ever read through [list].
+     */
+    fun getOwnedBy(
+        id: UUID,
+        owner: User,
+    ): Bill
 
     fun create(
         owner: User,

@@ -149,11 +149,13 @@ class TransactionServiceImpl(
     @Transactional(readOnly = true)
     override fun history(
         accountId: UUID,
-        owner: User,
+        reader: User,
         from: LocalDate,
         to: LocalDate,
     ): List<Transaction> {
-        val account = accountService.getOwnedBy(accountId, owner)
+        // A read path, so a viewer of this account is a legitimate caller. Every
+        // other method here keeps getOwnedBy, because every other one writes.
+        val account = accountService.getReadableBy(accountId, reader).resource
         val range = historyRange(from = from, to = to)
         return transactionRepository.findHistory(account = account, from = range.from, to = range.to)
     }

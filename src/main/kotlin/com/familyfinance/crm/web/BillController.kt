@@ -1,9 +1,11 @@
 package com.familyfinance.crm.web
 
+import com.familyfinance.crm.domain.ShareScope
 import com.familyfinance.crm.dto.BillResponse
 import com.familyfinance.crm.dto.CreateBillBatchRequest
 import com.familyfinance.crm.dto.CreateBillRequest
 import com.familyfinance.crm.dto.UpdateBillRequest
+import com.familyfinance.crm.dto.toBillResponse
 import com.familyfinance.crm.dto.toResponse
 import com.familyfinance.crm.exception.ErrorResponse
 import com.familyfinance.crm.service.BillService
@@ -42,19 +44,23 @@ class BillController(
                 "grid. `unpaid=true` returns everything still owed, including bills that fell due in an " +
                 "earlier month, which a month view by definition cannot show; `unpaid=false` returns " +
                 "settled ones. Omit both for every bill. `overdue` is derived from today in Asia/Almaty, " +
-                "so it is never stale.",
+                "so it is never stale. `scope` selects whose: `OWN` (the default, and what this " +
+                "returned before sharing existed), `SHARED`, or `ALL`; both filters apply to shared " +
+                "bills exactly as they do to your own.",
     )
-    @ApiResponse(responseCode = "200", description = "Your bills, earliest due date first")
+    @ApiResponse(responseCode = "200", description = "The bills in scope, earliest due date first")
     fun list(
         @RequestParam(required = false) month: String?,
         @RequestParam(required = false) unpaid: Boolean?,
+        @RequestParam(defaultValue = "OWN") scope: ShareScope,
     ): List<BillResponse> =
         billService
             .list(
-                owner = currentUser.require(),
+                reader = currentUser.require(),
                 month = month?.let(::parseMonth),
                 unpaid = unpaid,
-            ).map { it.toResponse() }
+                scope = scope,
+            ).map { it.toBillResponse() }
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)

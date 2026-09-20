@@ -1,7 +1,7 @@
 # Phase 8 — Sharing with family members
 
-Status: **spec'd, not built.** Builds on every entity in Phases 0/1, 2, 4 and
-7, and on the `User` entity in `00-architecture-and-foundations.md`.
+Status: **built.** Builds on every entity in Phases 0/1, 2, 4 and 7, and on the
+`User` entity in `00-architecture-and-foundations.md`.
 
 ## Scope
 
@@ -242,6 +242,22 @@ so the tests matter more than the count:
 The requirements have so far called unit tests sufficient. **This phase is the
 argument for integration tests** against a real Postgres: access control that
 is only asserted with mocked repositories is asserted against a fiction.
+
+**What was actually built, and the gap that remains.** Every item above is
+covered by unit tests, and they sidestep the fiction in one specific way: the
+five service tests run the **real** `ShareAccessServiceImpl` with only
+`ShareRepository` mocked, so the own-or-shared decision is exercised rather
+than stubbed. An owner's read never consults the share table at all, which the
+tests assert by leaving that mock strict — reaching it would fail them.
+
+The whole flow was also driven by hand against a real Postgres once: V8
+applied, `ddl-auto: validate` passed, and each numbered case above was checked
+over HTTP with two real users, including that a shared budget reports its
+owner's usage (224 700,75 at 112,35%) while the viewer's own budgets and
+monthly summary stay empty. That is a one-off, not a regression test. The
+standing gap is an automated `@SpringBootTest` + Testcontainers pass over the
+same list, which is still deferred per `00-` and is the first thing to add if
+this feature is touched again.
 
 ## Frontend
 

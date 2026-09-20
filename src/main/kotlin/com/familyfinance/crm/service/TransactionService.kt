@@ -29,10 +29,16 @@ interface TransactionService {
         owner: User,
     )
 
-    /** Matches either side of a transfer, so both accounts see it. */
+    /**
+     * Matches either side of a transfer, so both accounts see it. Readable by a
+     * viewer of the account: a balance without its history is a number with no
+     * explanation, so sharing an account shares what it did. A transfer whose
+     * other side was *not* shared still shows its `toAccountId` — an id the
+     * viewer cannot resolve, which is the point.
+     */
     fun history(
         accountId: UUID,
-        owner: User,
+        reader: User,
         from: LocalDate,
         to: LocalDate,
     ): List<Transaction>

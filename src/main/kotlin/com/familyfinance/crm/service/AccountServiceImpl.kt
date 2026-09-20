@@ -2,6 +2,8 @@ package com.familyfinance.crm.service
 
 import com.familyfinance.crm.domain.Account
 import com.familyfinance.crm.domain.AccountType
+import com.familyfinance.crm.domain.ShareResourceType
+import com.familyfinance.crm.domain.ShareScope
 import com.familyfinance.crm.domain.User
 import com.familyfinance.crm.dto.CreateAccountRequest
 import com.familyfinance.crm.dto.UpdateAccountRequest
@@ -20,9 +22,32 @@ class AccountServiceImpl(
     private val bankService: BankService,
     // A repository rather than GoalService, which already depends on this one.
     private val goalRepository: GoalRepository,
+    private val shareAccess: ShareAccessService,
 ) : AccountService {
     @Transactional(readOnly = true)
-    override fun list(owner: User): List<Account> = accountRepository.findAllActiveByOwner(owner)
+    override fun list(
+        reader: User,
+        scope: ShareScope,
+    ): List<Readable<Account>> {
+        val own =
+            if (scope.includesOwn) {
+                accountRepository.findAllActiveByOwner(reader).map { Readable.Own(it) }
+            } else {
+                emptyList()
+            }
+        val shared =
+            if (scope.includesShared) {
+                shareAccess.sharedWith(
+                    reader = reader,
+                    resourceType = ShareResourceType.ACCOUNT,
+                    load = accountRepository::findAllActiveByIds,
+                    ownerOf = Account::owner,
+                )
+            } else {
+                emptyList()
+            }
+        return own + shared
+    }
 
     @Transactional(readOnly = true)
     override fun getOwnedBy(
@@ -34,6 +59,25 @@ class AccountServiceImpl(
                 ?: throw NotFoundException("Account $id was not found")
         if (account.owner != owner) throw NotFoundException("Account $id was not found")
         return account
+    }
+
+    @Transactional(readOnly = true)
+    override fun getReadableBy(
+        id: UUID,
+        reader: User,
+    ): Readable<Account> {
+        val account =
+            accountRepository.findActiveById(id)
+                ?: throw NotFoundException("Account $id was not found")
+        return shareAccess.readableBy(
+            reader = reader,
+            resource = account,
+            owner = account.owner,
+            resourceType = ShareResourceType.ACCOUNT,
+            resourceId = id,
+            // Not shared with them, so indistinguishable from an account that
+            // does not exist — the same 404 getOwnedBy gives.
+        ) ?: throw NotFoundException("Account $id was not found")
     }
 
     @Transactional

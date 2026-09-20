@@ -30,6 +30,31 @@ interface BudgetVersionRepository : JpaRepository<BudgetVersion, UUID> {
         month: LocalDate,
     ): List<BudgetVersion>
 
+    /**
+     * The same lookup for a set of budgets rather than one owner's — what a
+     * viewer's `scope=SHARED` list needs. The owner is fetched because usage has
+     * to be computed against *their* spending, and because the response names
+     * them.
+     */
+    @Query(
+        """
+        SELECT v FROM BudgetVersion v
+        JOIN FETCH v.budget b
+        JOIN FETCH b.category c
+        LEFT JOIN FETCH c.parent
+        JOIN FETCH b.owner
+        WHERE b.id IN :budgetIds
+          AND b.isDeleted = false
+          AND v.effectiveFromMonth <= :month
+          AND (v.effectiveToMonth IS NULL OR v.effectiveToMonth >= :month)
+        ORDER BY c.name ASC
+        """,
+    )
+    fun findInForceForBudgets(
+        budgetIds: Collection<UUID>,
+        month: LocalDate,
+    ): List<BudgetVersion>
+
     @Query(
         """
         SELECT v FROM BudgetVersion v

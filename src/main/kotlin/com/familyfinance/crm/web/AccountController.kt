@@ -1,5 +1,6 @@
 package com.familyfinance.crm.web
 
+import com.familyfinance.crm.domain.ShareScope
 import com.familyfinance.crm.dto.AccountResponse
 import com.familyfinance.crm.dto.CreateAccountRequest
 import com.familyfinance.crm.dto.ReconcileRequest
@@ -41,21 +42,33 @@ class AccountController(
     private val currentUser: CurrentUserProvider,
 ) {
     @GetMapping
-    @Operation(summary = "List your accounts", description = "No pagination — the list is small by design.")
-    @ApiResponse(responseCode = "200", description = "Your accounts")
-    fun list(): List<AccountResponse> = accountService.list(currentUser.require()).map { it.toResponse() }
+    @Operation(
+        summary = "List accounts",
+        description =
+            "No pagination — the list is small by design. `scope` selects whose: `OWN` (the default, " +
+                "and exactly what this returned before sharing existed), `SHARED` for accounts other " +
+                "members have shared with you, or `ALL` for both, each row badged with `access`. " +
+                "Balances are never totalled across owners.",
+    )
+    @ApiResponse(responseCode = "200", description = "The accounts in scope")
+    fun list(
+        @RequestParam(defaultValue = "OWN") scope: ShareScope,
+    ): List<AccountResponse> = accountService.list(currentUser.require(), scope).map { it.toResponse() }
 
     @GetMapping("/{id}")
-    @Operation(summary = "Get one account")
+    @Operation(
+        summary = "Get one account",
+        description = "Yours, or one shared with you. Anything else is a 404, indistinguishable from a missing id.",
+    )
     @ApiResponse(responseCode = "200", description = "The account")
     @ApiResponse(
         responseCode = "404",
-        description = "No such account",
+        description = "No such account, and not shared with you",
         content = [Content(schema = Schema(implementation = ErrorResponse::class))],
     )
     fun get(
         @PathVariable id: UUID,
-    ): AccountResponse = accountService.getOwnedBy(id, currentUser.require()).toResponse()
+    ): AccountResponse = accountService.getReadableBy(id, currentUser.require()).toResponse()
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
@@ -111,7 +124,10 @@ class AccountController(
         summary = "Account history",
         description =
             "`from` and `to` are required and the range is capped at one year — there is no pagination. " +
-                "Transfers appear for both the source and the destination account.",
+                "Transfers appear for both the source and the destination account. Readable by a viewer " +
+                "of this account: a balance without its history explains nothing. A transfer to an " +
+                "account that was not shared still carries its `toAccountId`, which the viewer simply " +
+                "cannot resolve — that account is healthy, just not theirs to see.",
     )
     @ApiResponse(responseCode = "200", description = "Transactions in the range, newest first")
     @ApiResponse(
@@ -125,6 +141,6 @@ class AccountController(
         @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) to: LocalDate,
     ): List<TransactionResponse> =
         transactionService
-            .history(accountId = id, owner = currentUser.require(), from = from, to = to)
+            .history(accountId = id, reader = currentUser.require(), from = from, to = to)
             .map { it.toResponse() }
 }

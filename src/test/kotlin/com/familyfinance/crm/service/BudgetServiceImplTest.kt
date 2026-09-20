@@ -3,9 +3,12 @@ package com.familyfinance.crm.service
 import com.familyfinance.crm.budget
 import com.familyfinance.crm.budgetVersion
 import com.familyfinance.crm.category
+import com.familyfinance.crm.domain.AccessLevel
 import com.familyfinance.crm.domain.Budget
 import com.familyfinance.crm.domain.BudgetVersion
 import com.familyfinance.crm.domain.CategoryKind
+import com.familyfinance.crm.domain.ShareResourceType
+import com.familyfinance.crm.domain.ShareScope
 import com.familyfinance.crm.domain.TransactionType
 import com.familyfinance.crm.dto.CreateBudgetRequest
 import com.familyfinance.crm.dto.UpdateBudgetRequest
@@ -17,7 +20,10 @@ import com.familyfinance.crm.idValue
 import com.familyfinance.crm.repository.BudgetRepository
 import com.familyfinance.crm.repository.BudgetVersionRepository
 import com.familyfinance.crm.repository.CategoryTotal
+import com.familyfinance.crm.repository.ShareRepository
 import com.familyfinance.crm.repository.TransactionRepository
+import com.familyfinance.crm.resources
+import com.familyfinance.crm.share
 import com.familyfinance.crm.user
 import com.familyfinance.crm.withId
 import io.mockk.every
@@ -38,12 +44,15 @@ class BudgetServiceImplTest {
     private val budgetVersionRepository = mockk<BudgetVersionRepository>()
     private val transactionRepository = mockk<TransactionRepository>()
     private val categoryService = mockk<CategoryService>()
+    private val shareRepository = mockk<ShareRepository>()
+    private val shareAccess = ShareAccessServiceImpl(shareRepository)
     private val service =
         BudgetServiceImpl(
             budgetRepository = budgetRepository,
             budgetVersionRepository = budgetVersionRepository,
             transactionRepository = transactionRepository,
             categoryService = categoryService,
+            shareAccess = shareAccess,
             clock = fixedClock(LocalDate.of(2026, 9, 10)),
         )
 
@@ -156,7 +165,7 @@ class BudgetServiceImplTest {
                 categoryTotal(fruit.idValue, BigDecimal("2500")),
             )
 
-        val listed = service.list(owner, september)
+        val listed = service.list(owner, september).resources
 
         assertEquals(BigDecimal("12500"), listed.single().spent)
         assertEquals(BigDecimal("25.00"), listed.single().percentUsed)
@@ -340,6 +349,83 @@ class BudgetServiceImplTest {
         assertThrows<NotFoundException> {
             service.update(theirs.idValue, owner, UpdateBudgetRequest(limitAmount = BigDecimal("1")))
         }
+    }
+
+    // Phase 8 — sharing. A bug in any of these is a disclosure, not a wrong number.
+
+    private val viewer = user(email = "viewer@example.com")
+
+    @Test
+    fun `a shared budget's usage is its owner's spending, not the reader's`() {
+        val theirs = budget(owner, groceries)
+        val version = budgetVersion(theirs)
+        every { shareRepository.findAllGrantsTo(viewer, ShareResourceType.BUDGET) } returns
+            listOf(share(owner, viewer, ShareResourceType.BUDGET, theirs.idValue))
+        every {
+            budgetVersionRepository.findInForceForBudgets(setOf(theirs.idValue), september.atDay(1))
+        } returns listOf(version)
+        every { categoryService.descendantIndex(owner) } returns
+            mapOf(groceries.idValue to setOf(groceries.idValue))
+        every {
+            transactionRepository.sumByCategory(
+                owner,
+                TransactionType.EXPENSE,
+                LocalDate.of(2026, 9, 1),
+                LocalDate.of(2026, 9, 30),
+            )
+        } returns listOf(categoryTotal(groceries.idValue, BigDecimal("30000")))
+
+        val listed = service.list(viewer, september, ShareScope.SHARED)
+
+        // The owner spent 30000 of their 50000. Had this been computed for the
+        // reader it would read zero — the wrong question, silently answered.
+        assertEquals(BigDecimal("30000"), listed.single().resource.spent)
+        assertEquals(owner, listed.single().sharedBy)
+    }
+
+    @Test
+    fun `a viewer's own budgets are unchanged by anything shared with them`() {
+        val mine = budget(viewer, groceries)
+        every { budgetVersionRepository.findInForce(viewer, september.atDay(1)) } returns
+            listOf(budgetVersion(mine))
+        every { categoryService.descendantIndex(viewer) } returns
+            mapOf(groceries.idValue to setOf(groceries.idValue))
+        every {
+            transactionRepository.sumByCategory(
+                viewer,
+                TransactionType.EXPENSE,
+                LocalDate.of(2026, 9, 1),
+                LocalDate.of(2026, 9, 30),
+            )
+        } returns listOf(categoryTotal(groceries.idValue, BigDecimal("1000")))
+
+        val listed = service.list(viewer, september, ShareScope.OWN)
+
+        // Only their own spending, and the share table is never consulted: a
+        // strict mock would throw if OWN reached it.
+        assertEquals(BigDecimal("1000"), listed.single().resource.spent)
+        assertEquals(AccessLevel.OWNER, listed.single().accessLevel)
+    }
+
+    @Test
+    fun `a viewer cannot change the limit on a budget shared with them`() {
+        val theirs = budget(owner, groceries)
+        every { budgetRepository.findActiveById(theirs.idValue) } returns theirs
+        every { shareRepository.findGrant(viewer, ShareResourceType.BUDGET, theirs.idValue) } returns
+            share(owner, viewer, ShareResourceType.BUDGET, theirs.idValue)
+
+        assertThrows<NotFoundException> {
+            service.update(theirs.idValue, viewer, UpdateBudgetRequest(limitAmount = BigDecimal("1")))
+        }
+    }
+
+    @Test
+    fun `a viewer cannot delete a budget shared with them`() {
+        val theirs = budget(owner, groceries)
+        every { budgetRepository.findActiveById(theirs.idValue) } returns theirs
+
+        assertThrows<NotFoundException> { service.softDelete(theirs.idValue, viewer) }
+        assertTrue(!theirs.isDeleted)
     }
 
     private fun request(limitAmount: String = "50000") =

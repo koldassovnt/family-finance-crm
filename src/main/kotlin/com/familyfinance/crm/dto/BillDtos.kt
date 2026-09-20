@@ -1,5 +1,6 @@
 package com.familyfinance.crm.dto
 
+import com.familyfinance.crm.domain.AccessLevel
 import com.familyfinance.crm.domain.BASE_CURRENCY
 import jakarta.validation.constraints.DecimalMin
 import jakarta.validation.constraints.Max
@@ -72,4 +73,8 @@ data class BillResponse(
     /** Derived, never stored: unpaid and past its due date in the app timezone. */
     val overdue: Boolean,
     val batchId: UUID?,
+    /** How you reached this: your own, or shared with you. */
+    val access: AccessLevel = AccessLevel.OWNER,
+    /** Whose it is — present only when it is not yours. */
+    val owner: UserRef? = null,
 )

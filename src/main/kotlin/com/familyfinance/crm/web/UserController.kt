@@ -24,7 +24,7 @@ import org.springframework.web.bind.annotation.RestController
 
 @RestController
 @RequestMapping("/api/v1/users")
-@Tag(name = "Users", description = "Owner-only user provisioning")
+@Tag(name = "Users", description = "The household: owner-only provisioning, plus the member list sharing needs")
 class UserController(
     private val userService: UserService,
     private val currentUser: CurrentUserProvider,
@@ -45,6 +45,17 @@ class UserController(
     fun create(
         @Valid @RequestBody request: CreateUserRequest,
     ): UserResponse = userService.createMember(request).toResponse()
+
+    @GetMapping
+    @Operation(
+        summary = "The household",
+        description =
+            "Every member, for any authenticated caller — sharing needs somebody to share with, and in " +
+                "a household of a few people who already know each other's names, hiding the list would " +
+                "protect nothing. Includes you; sharing with yourself is rejected anyway.",
+    )
+    @ApiResponse(responseCode = "200", description = "The members")
+    fun list(): List<UserResponse> = userService.listMembers().map { it.toResponse() }
 
     @GetMapping("/me")
     @Operation(

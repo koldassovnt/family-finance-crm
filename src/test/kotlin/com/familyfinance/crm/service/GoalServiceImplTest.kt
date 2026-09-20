@@ -1,10 +1,13 @@
 package com.familyfinance.crm.service
 
 import com.familyfinance.crm.account
+import com.familyfinance.crm.domain.AccessLevel
 import com.familyfinance.crm.domain.Account
 import com.familyfinance.crm.domain.Goal
 import com.familyfinance.crm.domain.GoalStatus
 import com.familyfinance.crm.domain.GoalType
+import com.familyfinance.crm.domain.ShareResourceType
+import com.familyfinance.crm.domain.ShareScope
 import com.familyfinance.crm.dto.CreateGoalRequest
 import com.familyfinance.crm.dto.UpdateGoalRequest
 import com.familyfinance.crm.exception.NotFoundException
@@ -12,6 +15,8 @@ import com.familyfinance.crm.exception.ValidationException
 import com.familyfinance.crm.goal
 import com.familyfinance.crm.idValue
 import com.familyfinance.crm.repository.GoalRepository
+import com.familyfinance.crm.repository.ShareRepository
+import com.familyfinance.crm.share
 import com.familyfinance.crm.user
 import com.familyfinance.crm.withId
 import io.mockk.every
@@ -29,7 +34,9 @@ import kotlin.test.assertTrue
 class GoalServiceImplTest {
     private val goalRepository = mockk<GoalRepository>()
     private val accountService = mockk<AccountService>()
-    private val service = GoalServiceImpl(goalRepository, accountService)
+    private val shareRepository = mockk<ShareRepository>()
+    private val shareAccess = ShareAccessServiceImpl(shareRepository)
+    private val service = GoalServiceImpl(goalRepository, accountService, shareAccess)
 
     private val owner = user()
 
@@ -207,6 +214,62 @@ class GoalServiceImplTest {
         service.softDelete(subject.idValue, owner)
 
         assertTrue(subject.isDeleted)
+    }
+
+    // Phase 8 — sharing. A bug in any of these is a disclosure, not a wrong number.
+
+    private val viewer = user(email = "viewer@example.com")
+
+    @Test
+    fun `a shared goal discloses the linked account's balance, which is the whole point`() {
+        val savings = account(owner, balance = "250000")
+        val theirs = goal(owner, savings, targetAmount = "1000000")
+        every { shareRepository.findAllGrantsTo(viewer, ShareResourceType.GOAL) } returns
+            listOf(share(owner, viewer, ShareResourceType.GOAL, theirs.idValue))
+        every { goalRepository.findAllDetailedByIds(setOf(theirs.idValue)) } returns listOf(theirs)
+
+        val listed = service.list(viewer, ShareScope.SHARED)
+
+        // Progress *is* balance over target, so there is no version of this that
+        // shows progress and withholds the balance — see phase-8-sharing.md.
+        assertEquals(BigDecimal("25.00"), listed.single().resource.progressPercent)
+        assertEquals(
+            BigDecimal("250000"),
+            listed
+                .single()
+                .resource.goal.linkedAccount.balance,
+        )
+        assertEquals(owner, listed.single().sharedBy)
+    }
+
+    @Test
+    fun `scope OWN lists only your own goals, without consulting the share table`() {
+        val mine = goal(viewer, account(viewer, balance = "100"))
+        every { goalRepository.findAllByOwner(viewer) } returns listOf(mine)
+
+        val listed = service.list(viewer, ShareScope.OWN)
+
+        assertEquals(listOf(mine), listed.map { it.resource.goal })
+        assertEquals(listOf(AccessLevel.OWNER), listed.map { it.accessLevel })
+    }
+
+    @Test
+    fun `a viewer cannot retarget a goal shared with them`() {
+        val theirs = goal(owner, account(owner))
+        every { goalRepository.findDetailedById(theirs.idValue) } returns theirs
+
+        assertThrows<NotFoundException> {
+            service.update(theirs.idValue, viewer, UpdateGoalRequest(targetAmount = BigDecimal("1")))
+        }
+    }
+
+    @Test
+    fun `a viewer cannot delete a goal shared with them`() {
+        val theirs = goal(owner, account(owner))
+        every { goalRepository.findDetailedById(theirs.idValue) } returns theirs
+
+        assertThrows<NotFoundException> { service.softDelete(theirs.idValue, viewer) }
+        assertTrue(!theirs.isDeleted)
     }
 
     private fun request(

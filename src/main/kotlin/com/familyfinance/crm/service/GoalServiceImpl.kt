@@ -2,6 +2,8 @@ package com.familyfinance.crm.service
 
 import com.familyfinance.crm.domain.Goal
 import com.familyfinance.crm.domain.GoalStatus
+import com.familyfinance.crm.domain.ShareResourceType
+import com.familyfinance.crm.domain.ShareScope
 import com.familyfinance.crm.domain.User
 import com.familyfinance.crm.dto.CreateGoalRequest
 import com.familyfinance.crm.dto.UpdateGoalRequest
@@ -18,9 +20,33 @@ import java.util.UUID
 class GoalServiceImpl(
     private val goalRepository: GoalRepository,
     private val accountService: AccountService,
+    private val shareAccess: ShareAccessService,
 ) : GoalService {
     @Transactional(readOnly = true)
-    override fun list(owner: User): List<GoalWithProgress> = goalRepository.findAllByOwner(owner).map(::withProgress)
+    override fun list(
+        reader: User,
+        scope: ShareScope,
+    ): List<Readable<GoalWithProgress>> {
+        val own =
+            if (scope.includesOwn) {
+                goalRepository.findAllByOwner(reader).map { Readable.Own(withProgress(it)) }
+            } else {
+                emptyList()
+            }
+        val shared =
+            if (scope.includesShared) {
+                shareAccess
+                    .sharedWith(
+                        reader = reader,
+                        resourceType = ShareResourceType.GOAL,
+                        load = goalRepository::findAllDetailedByIds,
+                        ownerOf = Goal::owner,
+                    ).map { readable -> readable.map(::withProgress) }
+            } else {
+                emptyList()
+            }
+        return own + shared
+    }
 
     @Transactional
     override fun create(
@@ -88,7 +114,8 @@ class GoalServiceImpl(
         return status
     }
 
-    private fun getOwnedBy(
+    @Transactional(readOnly = true)
+    override fun getOwnedBy(
         id: UUID,
         owner: User,
     ): Goal {

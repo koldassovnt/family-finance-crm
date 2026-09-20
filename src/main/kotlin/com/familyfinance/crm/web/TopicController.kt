@@ -1,5 +1,6 @@
 package com.familyfinance.crm.web
 
+import com.familyfinance.crm.domain.ShareScope
 import com.familyfinance.crm.domain.TopicStatus
 import com.familyfinance.crm.dto.AttachTransactionsRequest
 import com.familyfinance.crm.dto.CreateTopicRequest
@@ -8,6 +9,8 @@ import com.familyfinance.crm.dto.TopicResponse
 import com.familyfinance.crm.dto.TransactionResponse
 import com.familyfinance.crm.dto.UpdateTopicRequest
 import com.familyfinance.crm.dto.toResponse
+import com.familyfinance.crm.dto.toTopicDetailResponse
+import com.familyfinance.crm.dto.toTopicResponse
 import com.familyfinance.crm.exception.ErrorResponse
 import com.familyfinance.crm.service.TopicService
 import io.swagger.v3.oas.annotations.Operation
@@ -41,25 +44,33 @@ class TopicController(
 ) {
     @GetMapping
     @Operation(
-        summary = "List your topics with their totals",
+        summary = "List topics with their totals",
         description =
             "Newest start date first, undated last. `status=ACTIVE` or `CLOSED` filters; omit for all. " +
-                "Every total is summed on read from the attached transactions, in KZT.",
+                "Every total is summed on read from the attached transactions, in KZT. `scope` selects " +
+                "whose: `OWN` (the default, and what this returned before sharing existed), `SHARED`, " +
+                "or `ALL`. Totals are per topic and never summed across owners.",
     )
-    @ApiResponse(responseCode = "200", description = "Your topics")
+    @ApiResponse(responseCode = "200", description = "The topics in scope")
     fun list(
         @RequestParam(required = false) status: TopicStatus?,
-    ): List<TopicResponse> = topicService.list(currentUser.require(), status).map { it.toResponse() }
+        @RequestParam(defaultValue = "OWN") scope: ShareScope,
+    ): List<TopicResponse> =
+        topicService
+            .list(reader = currentUser.require(), status = status, scope = scope)
+            .map { it.toTopicResponse() }
 
     @GetMapping("/{id}")
     @Operation(
         summary = "One topic with its breakdowns",
-        description = "The list figures plus per-category expense and income breakdowns for a chart.",
+        description =
+            "The list figures plus per-category expense and income breakdowns for a chart. Yours, or " +
+                "one shared with you.",
     )
     @ApiResponse(responseCode = "200", description = "The topic")
     fun get(
         @PathVariable id: UUID,
-    ): TopicDetailResponse = topicService.get(id, currentUser.require()).toResponse()
+    ): TopicDetailResponse = topicService.get(id, currentUser.require()).toTopicDetailResponse()
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
@@ -109,7 +120,10 @@ class TopicController(
         summary = "Everything attached to this topic",
         description =
             "Newest first, with no date range required: membership is itself the bound, unlike " +
-                "GET /api/v1/transactions where a range is mandatory.",
+                "GET /api/v1/transactions where a range is mandatory. Readable by a viewer of the " +
+                "topic, which makes this the widest of the five shares — a topic is a lens over " +
+                "transactions, so sharing the lens shares what it frames, including rows on accounts " +
+                "that were never shared.",
     )
     @ApiResponse(responseCode = "200", description = "The topic's transactions")
     fun transactions(
@@ -122,7 +136,8 @@ class TopicController(
         description =
             "Your unattached INCOME/EXPENSE transactions inside the topic's start..end window, newest " +
                 "first. A suggestion only — nothing is attached automatically, because dates are a weak " +
-                "signal: a flight booked in March belongs to a June trip.",
+                "signal: a flight booked in March belongs to a June trip. Owner only, even though it " +
+                "reads: it is a tool for attaching, not a view.",
     )
     @ApiResponse(responseCode = "200", description = "Candidates")
     @ApiResponse(

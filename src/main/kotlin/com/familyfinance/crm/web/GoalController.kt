@@ -1,8 +1,10 @@
 package com.familyfinance.crm.web
 
+import com.familyfinance.crm.domain.ShareScope
 import com.familyfinance.crm.dto.CreateGoalRequest
 import com.familyfinance.crm.dto.GoalResponse
 import com.familyfinance.crm.dto.UpdateGoalRequest
+import com.familyfinance.crm.dto.toGoalResponse
 import com.familyfinance.crm.dto.toResponse
 import com.familyfinance.crm.exception.ErrorResponse
 import com.familyfinance.crm.service.GoalService
@@ -20,6 +22,7 @@ import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 import java.util.UUID
@@ -33,13 +36,19 @@ class GoalController(
 ) {
     @GetMapping
     @Operation(
-        summary = "List your goals with computed progress",
+        summary = "List goals with computed progress",
         description =
             "Progress is the linked account's balance against the target, clamped to 0–100. " +
-                "`achieved` is derived, never a stored state — an achieved goal can still be abandoned.",
+                "`achieved` is derived, never a stored state — an achieved goal can still be abandoned. " +
+                "`scope` selects whose: `OWN` (the default, and what this returned before sharing " +
+                "existed), `SHARED`, or `ALL`. A shared goal carries its linked account, balance " +
+                "included — that disclosure is the whole point of sharing one, and the share dialog " +
+                "names the account.",
     )
-    @ApiResponse(responseCode = "200", description = "Your goals")
-    fun list(): List<GoalResponse> = goalService.list(currentUser.require()).map { it.toResponse() }
+    @ApiResponse(responseCode = "200", description = "The goals in scope")
+    fun list(
+        @RequestParam(defaultValue = "OWN") scope: ShareScope,
+    ): List<GoalResponse> = goalService.list(currentUser.require(), scope).map { it.toGoalResponse() }
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
