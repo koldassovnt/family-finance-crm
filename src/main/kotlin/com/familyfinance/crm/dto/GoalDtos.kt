@@ -46,7 +46,8 @@ data class GoalResponse(
     val type: GoalType,
     val targetAmount: BigDecimal,
     val targetDate: LocalDate?,
-    val linkedAccount: AccountResponse,
+    /** Badge-free by design — see [LinkedAccountResponse]. */
+    val linkedAccount: LinkedAccountResponse,
     val status: GoalStatus,
     /** Clamped to 0–100. */
     val progressPercent: BigDecimal,

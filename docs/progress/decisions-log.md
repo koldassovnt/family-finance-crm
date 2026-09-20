@@ -24,6 +24,16 @@ each other's names, hiding the list protects nothing. It is a real widening of
 Phase 0/1, where members were invisible to each other, so it is recorded rather
 than slipped in.
 
+**An embedded resource carries no access badge.** `access` and `owner` say how
+the caller reached the resource they asked for, so they belong on that and
+nothing nested inside it. A goal's linked account is therefore a separate
+`LinkedAccountResponse` with neither field. The first version reused
+`AccountResponse`, whose defaults meant a viewer of a shared goal was told
+`access: "OWNER"` about an account that 404s for them — the most permissive
+value in the enum, asserted on no basis. Found by the frontend session reading
+the DTOs. A nested object that *is* the subject of the response, like
+`TopicDetailResponse.topic`, is badged on purpose and sets it explicitly.
+
 **Sharing a goal discloses the linked account's balance, and there is no
 partial version.** Progress is `balance ÷ targetAmount`, so a response showing
 progress and a target is one multiplication from the balance. Hiding the number

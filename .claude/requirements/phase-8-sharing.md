@@ -85,6 +85,11 @@ the moment of sharing, because "share my account" sounds narrower than it is.
   «Удалённый счёт».
 - **`GOAL`** — name, target, status, progress, **and the linked account's name,
   currency and balance**, because progress *is* the balance against the target.
+  That account is embedded as a badge-free shape with no `access` and no
+  `owner`: the badge says how the caller reached the thing they *asked for*, and
+  the first version of this shipped a nested `access: "OWNER"` about an account
+  that 404s for the viewer reading it. A separate response type keeps that
+  unsayable.
   Sharing a goal therefore discloses that account's balance without sharing the
   account.
   - **There is no partial version of this.** A "percentage only" response looks

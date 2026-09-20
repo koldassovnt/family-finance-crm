@@ -60,3 +60,26 @@ data class AccountResponse(
     /** Whose it is — present only when it is not yours. */
     val owner: UserRef? = null,
 )
+
+/**
+ * An account embedded in something else — today only a goal's linked account.
+ *
+ * Deliberately carries **no** `access` or `owner`. The badge says how the caller
+ * reached *the thing they asked for*, and something nested inside that is not
+ * it. This was an [AccountResponse] until a viewer of a shared goal was found
+ * to be told `access: "OWNER"` about an account that 404s for them — the most
+ * permissive value in the enum, asserted on no basis at all. A separate shape
+ * makes that unsayable rather than merely wrong, the same reason
+ * `getOwnedBy` and `getReadableBy` are kept apart.
+ *
+ * The balance staying here is the deliberate disclosure: progress *is* the
+ * balance against the target, so a goal cannot be shared without it.
+ */
+data class LinkedAccountResponse(
+    val id: UUID,
+    val name: String,
+    val type: AccountType,
+    val balance: BigDecimal,
+    val currency: String,
+    val bank: BankResponse?,
+)

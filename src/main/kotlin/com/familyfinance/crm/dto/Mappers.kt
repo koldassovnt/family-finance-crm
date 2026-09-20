@@ -78,6 +78,17 @@ fun Share.toResponse(resourceName: String? = null) =
 
 fun ShareSummary.toResponse() = share.toResponse(resourceName = resourceName)
 
+/** The embedded form: everything a goal needs, and no claim about access. */
+fun Account.toLinkedResponse() =
+    LinkedAccountResponse(
+        id = requiredId(),
+        name = name,
+        type = type,
+        balance = balance,
+        currency = currency,
+        bank = bank?.toResponse(),
+    )
+
 fun Category.toResponse() =
     CategoryResponse(
         id = requiredId(),
@@ -152,7 +163,7 @@ fun GoalWithProgress.toResponse() =
         type = goal.type,
         targetAmount = goal.targetAmount,
         targetDate = goal.targetDate,
-        linkedAccount = goal.linkedAccount.toResponse(),
+        linkedAccount = goal.linkedAccount.toLinkedResponse(),
         status = goal.status,
         progressPercent = progressPercent,
         achieved = achieved,
