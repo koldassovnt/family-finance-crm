@@ -4,14 +4,19 @@ import com.familyfinance.crm.ALMATY
 import com.familyfinance.crm.config.AppProperties
 import com.familyfinance.crm.domain.UserRole
 import com.familyfinance.crm.idValue
+import com.familyfinance.crm.repository.UserRepository
 import com.familyfinance.crm.user
+import io.mockk.every
+import io.mockk.mockk
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
+import org.springframework.dao.DataAccessResourceFailureException
+import org.springframework.security.authentication.AuthenticationServiceException
+import org.springframework.security.oauth2.jwt.JwtException
 import java.time.Clock
 import java.time.Duration
 import java.time.LocalDate
 import kotlin.test.assertEquals
-import kotlin.test.assertNull
 
 class JwtServiceTest {
     private val secret = "a-test-secret-that-is-long-enough-for-hs256"
@@ -21,51 +26,73 @@ class JwtServiceTest {
             .atTime(12, 0)
             .atZone(ALMATY)
             .toInstant()
-    private val service = JwtService(properties(), Clock.fixed(issuedAt, ALMATY))
+    private val userRepository =
+        mockk<UserRepository> {
+            every { findPasswordChangedAt(any()) } returns issuedAt.minus(Duration.ofDays(1))
+        }
+    private val service = service()
 
     @Test
-    fun `round-trips the principal`() {
+    fun `round-trips the subject and role`() {
         val subject = user(role = UserRole.MEMBER)
 
-        val principal = service.parse(service.issue(subject).token)
+        val jwt = service.decoder.decode(service.issue(subject).token)
 
-        assertEquals(subject.idValue, principal?.id)
-        assertEquals(UserRole.MEMBER, principal?.role)
+        assertEquals(subject.idValue.toString(), jwt.subject)
+        assertEquals("MEMBER", jwt.getClaimAsString(ROLE_CLAIM))
     }
 
     @Test
     fun `expires the token after the configured window`() {
         val token = service.issue(user()).token
-        val later = JwtService(properties(), Clock.fixed(issuedAt.plus(Duration.ofDays(31)), ALMATY))
+        val later = service(clock = Clock.fixed(issuedAt.plus(Duration.ofDays(31)), ALMATY))
 
-        assertNull(later.parse(token))
+        assertThrows<JwtException> { later.decoder.decode(token) }
+    }
+
+    @Test
+    fun `rejects a token issued before the password was last changed`() {
+        val token = service.issue(user()).token
+        every { userRepository.findPasswordChangedAt(any()) } returns issuedAt.plusSeconds(1)
+
+        assertThrows<JwtException> { service.decoder.decode(token) }
+    }
+
+    @Test
+    fun `reports a database failure as a service error rather than a bad token`() {
+        val token = service.issue(user()).token
+        every { userRepository.findPasswordChangedAt(any()) } throws DataAccessResourceFailureException("down")
+
+        assertThrows<AuthenticationServiceException> { service.decoder.decode(token) }
     }
 
     @Test
     fun `rejects a token signed with a different secret`() {
-        val token =
-            JwtService(properties(secret = "a-completely-different-secret-key-32b"), Clock.fixed(issuedAt, ALMATY))
-                .issue(user())
-                .token
+        val token = service(secret = "a-completely-different-secret-key-32b").issue(user()).token
 
-        assertNull(service.parse(token))
+        assertThrows<JwtException> { service.decoder.decode(token) }
     }
 
     @Test
     fun `rejects a garbage token`() {
-        assertNull(service.parse("not-a-jwt"))
+        assertThrows<JwtException> { service.decoder.decode("not-a-jwt") }
     }
 
     @Test
     fun `refuses to start with a secret that is too short for HS256`() {
-        assertThrows<IllegalStateException> {
-            JwtService(properties(secret = "too-short"), Clock.fixed(issuedAt, ALMATY))
-        }
+        assertThrows<IllegalStateException> { service(secret = "too-short") }
     }
 
-    private fun properties(secret: String = this.secret) =
-        AppProperties(
-            timezone = ALMATY,
-            jwt = AppProperties.JwtProperties(secret = secret, expiryDays = 30),
-        )
+    private fun service(
+        secret: String = this.secret,
+        clock: Clock = Clock.fixed(issuedAt, ALMATY),
+    ) = JwtService(
+        properties =
+            AppProperties(
+                timezone = ALMATY,
+                jwt = AppProperties.JwtProperties(secret = secret, expiryDays = 30),
+            ),
+        clock = clock,
+        userRepository = userRepository,
+    )
 }

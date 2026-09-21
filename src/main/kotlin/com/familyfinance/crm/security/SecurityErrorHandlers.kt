@@ -8,6 +8,7 @@ import jakarta.servlet.http.HttpServletResponse
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.security.access.AccessDeniedException
+import org.springframework.security.authentication.AuthenticationServiceException
 import org.springframework.security.core.AuthenticationException
 import org.springframework.security.web.AuthenticationEntryPoint
 import org.springframework.security.web.access.AccessDeniedHandler
@@ -26,11 +27,22 @@ class JsonAuthenticationEntryPoint(
         request: HttpServletRequest,
         response: HttpServletResponse,
         authException: AuthenticationException,
-    ) = response.writeError(
-        objectMapper,
-        HttpStatus.UNAUTHORIZED,
-        ErrorResponse(ErrorCode.UNAUTHENTICATED, "A valid bearer token is required"),
-    )
+    ) = if (authException is AuthenticationServiceException) {
+        // The token could not be *checked* (database down), which says nothing
+        // about whether it is valid — a 503, so the client retries rather than
+        // throwing its token away.
+        response.writeError(
+            objectMapper,
+            HttpStatus.SERVICE_UNAVAILABLE,
+            ErrorResponse(ErrorCode.INTERNAL_ERROR, "Service temporarily unavailable"),
+        )
+    } else {
+        response.writeError(
+            objectMapper,
+            HttpStatus.UNAUTHORIZED,
+            ErrorResponse(ErrorCode.UNAUTHENTICATED, "A valid bearer token is required"),
+        )
+    }
 }
 
 @Component
@@ -48,12 +60,7 @@ class JsonAccessDeniedHandler(
     )
 }
 
-/**
- * Shared with [JwtAuthenticationFilter]: a filter runs outside
- * `DispatcherServlet`, so `GlobalExceptionHandler` never sees what it throws
- * and anything escaping becomes a container error page.
- */
-internal fun HttpServletResponse.writeError(
+private fun HttpServletResponse.writeError(
     objectMapper: ObjectMapper,
     httpStatus: HttpStatus,
     body: ErrorResponse,
