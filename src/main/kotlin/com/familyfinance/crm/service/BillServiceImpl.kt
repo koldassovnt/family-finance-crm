@@ -13,7 +13,6 @@ import com.familyfinance.crm.exception.invalidField
 import com.familyfinance.crm.repository.BillRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
-import java.math.BigDecimal
 import java.time.Clock
 import java.time.LocalDate
 import java.time.YearMonth
@@ -43,62 +42,27 @@ class BillServiceImpl(
         month: YearMonth?,
         unpaid: Boolean?,
     ): List<BillWithStatus> {
-        val range = month?.let { monthRange(it) }
-        // `unpaid = true` means isPaid = false, so the flag inverts.
-        val isPaid = unpaid?.not()
-        // Nested rather than a flat `when`, so both nullables narrow by branch.
-        val bills =
-            if (isPaid == null) {
-                if (range == null) {
-                    billRepository.findAllByOwnerOrderByDueDateAscNameAsc(owner)
-                } else {
-                    billRepository.findAllByOwnerAndDueDateBetweenOrderByDueDateAscNameAsc(
-                        owner = owner,
-                        from = range.from,
-                        to = range.to,
-                    )
-                }
-            } else {
-                if (range == null) {
-                    billRepository.findAllByOwnerAndIsPaidOrderByDueDateAscNameAsc(
-                        owner = owner,
-                        isPaid = isPaid,
-                    )
-                } else {
-                    billRepository.findAllByOwnerAndIsPaidAndDueDateBetweenOrderByDueDateAscNameAsc(
-                        owner = owner,
-                        isPaid = isPaid,
-                        from = range.from,
-                        to = range.to,
-                    )
-                }
-            }
-        return bills.map(::withStatus)
+        // ponytail: filtered in memory; one query with nullable parameters (like
+        // `findForOwner`) if an owner's bills ever run into the thousands.
+        val matches = billFilter(month, unpaid)
+        return billRepository.findAllByOwnerOrderByDueDateAscNameAsc(owner).filter(matches).map(::withStatus)
     }
 
-    /**
-     * The same two filters, applied in memory. A viewer holds a handful of
-     * shared bills, so one lookup by id and a filter here beats four more
-     * derived queries duplicating the combinations above.
-     */
+    /** A viewer holds a handful of shared bills; one id lookup, then the same filter as their own. */
     private fun listShared(
         reader: User,
         month: YearMonth?,
         unpaid: Boolean?,
     ): List<Readable<BillWithStatus>> {
-        val range = month?.let { monthRange(it) }
+        val matches = billFilter(month, unpaid)
         return shareAccess
             .sharedWith(
                 reader = reader,
                 resourceType = ShareResourceType.BILL,
                 load = billRepository::findAllDetailedByIds,
                 ownerOf = Bill::owner,
-            ).filter { readable ->
-                val bill = readable.resource
-                val inMonth = range == null || bill.dueDate in range.from..range.to
-                val matchesPaid = unpaid == null || bill.isPaid != unpaid
-                inMonth && matchesPaid
-            }.map { readable -> readable.map(::withStatus) }
+            ).filter { matches(it.resource) }
+            .map { readable -> readable.map(::withStatus) }
     }
 
     @Transactional
@@ -106,7 +70,7 @@ class BillServiceImpl(
         owner: User,
         request: CreateBillRequest,
     ): BillWithStatus {
-        val amount = requirePositiveAmount(request.amount)
+        val amount = requirePositive(request.amount, "amount")
         val dueDate = request.dueDate ?: throw invalidField("dueDate", "is required")
         // A bill records something planned, so unlike a transaction it may sit in
         // the future — and a past date simply means it is overdue.
@@ -130,13 +94,13 @@ class BillServiceImpl(
         owner: User,
         request: CreateBillBatchRequest,
     ): List<BillWithStatus> {
-        val amount = requirePositiveAmount(request.amount)
+        val amount = requirePositive(request.amount, "amount")
         val dayOfMonth = request.dayOfMonth ?: throw invalidField("dayOfMonth", "is required")
         if (dayOfMonth !in 1..MAX_DAY_OF_MONTH) {
             throw invalidField("dayOfMonth", "must be between 1 and $MAX_DAY_OF_MONTH")
         }
-        val startMonth = parseMonthField("startMonth", request.startMonth)
-        val endMonth = parseMonthField("endMonth", request.endMonth)
+        val startMonth = parseMonth(request.startMonth, field = "startMonth")
+        val endMonth = parseMonth(request.endMonth, field = "endMonth")
         if (endMonth.isBefore(startMonth)) {
             throw invalidField("endMonth", "must not be before 'startMonth'")
         }
@@ -186,7 +150,7 @@ class BillServiceImpl(
             }
             bill.currency = normalized
         }
-        request.amount?.let { bill.amount = requirePositiveAmount(it) }
+        request.amount?.let { bill.amount = requirePositive(it, "amount") }
         request.dueDate?.let { bill.dueDate = it }
         // Editing one row never touches its siblings, and it keeps its batchId.
         request.isPaid?.let { bill.isPaid = it }
@@ -239,18 +203,13 @@ private fun dayWithin(
     dayOfMonth: Int,
 ): Int = minOf(dayOfMonth, month.lengthOfMonth())
 
-private fun parseMonthField(
-    field: String,
-    value: String,
-): YearMonth =
-    try {
-        YearMonth.parse(value)
-    } catch (ex: java.time.format.DateTimeParseException) {
-        throw invalidField(field, "must be in yyyy-MM format, e.g. 2026-09")
+/** `unpaid = true` means isPaid = false, so the flag inverts; null skips that filter. */
+private fun billFilter(
+    month: YearMonth?,
+    unpaid: Boolean?,
+): (Bill) -> Boolean {
+    val range = month?.let { monthRange(it) }
+    return { bill ->
+        (range == null || bill.dueDate in range.from..range.to) && (unpaid == null || bill.isPaid != unpaid)
     }
-
-private fun requirePositiveAmount(amount: BigDecimal?): BigDecimal {
-    val value = amount ?: throw invalidField("amount", "is required")
-    if (value.signum() <= 0) throw invalidField("amount", "must be greater than zero")
-    return value
 }

@@ -18,10 +18,6 @@ class NotFoundException(
     message: String,
 ) : ApiException(ErrorCode.NOT_FOUND, HttpStatus.NOT_FOUND, message)
 
-class ForbiddenException(
-    message: String,
-) : ApiException(ErrorCode.FORBIDDEN, HttpStatus.FORBIDDEN, message)
-
 class UnauthenticatedException(
     message: String,
 ) : ApiException(ErrorCode.UNAUTHENTICATED, HttpStatus.UNAUTHORIZED, message)

@@ -115,7 +115,7 @@ class BudgetServiceImpl(
         request: CreateBudgetRequest,
     ): BudgetWithUsage {
         val categoryId = request.categoryId ?: throw invalidField("categoryId", "is required")
-        val limitAmount = requirePositiveLimit(request.limitAmount)
+        val limitAmount = requirePositive(request.limitAmount, "limitAmount")
         val category = categoryService.getOwnedBy(categoryId, owner)
         if (category.kind != CategoryKind.EXPENSE) {
             // Usage only ever counts EXPENSE transactions, so an income budget
@@ -151,7 +151,7 @@ class BudgetServiceImpl(
         val budget = getOwnedBy(id, owner)
         val open = openVersionOf(budget)
         val month = currentMonth()
-        val limitAmount = request.limitAmount?.let(::requirePositiveLimit) ?: open.limitAmount
+        val limitAmount = request.limitAmount?.let { requirePositive(it, "limitAmount") } ?: open.limitAmount
         // An explicit null clears the cue, so this cannot collapse into an elvis
         // chain: `Optional.empty()` and an absent field both yield null there.
         val threshold =
@@ -265,12 +265,6 @@ class BudgetServiceImpl(
 private const val MIN_THRESHOLD_PERCENT = 1
 private const val MAX_THRESHOLD_PERCENT = 100
 private const val PERCENT_SCALE = 2
-
-private fun requirePositiveLimit(limitAmount: BigDecimal?): BigDecimal {
-    val value = limitAmount ?: throw invalidField("limitAmount", "is required")
-    if (value.signum() <= 0) throw invalidField("limitAmount", "must be greater than zero")
-    return value
-}
 
 /** The category itself plus every descendant — a parent budget caps the group. */
 private fun descendantsOf(

@@ -36,9 +36,12 @@ fun historyRange(
 /** Parses `2026-09` into that month's inclusive bounds. */
 fun monthRange(month: YearMonth): DateRange = DateRange(from = month.atDay(1), to = month.atEndOfMonth())
 
-fun parseMonth(month: String): YearMonth =
+fun parseMonth(
+    month: String,
+    field: String = "month",
+): YearMonth =
     try {
         YearMonth.parse(month)
     } catch (ex: DateTimeParseException) {
-        throw invalidField("month", "must be in yyyy-MM format, e.g. 2026-09")
+        throw invalidField(field, "must be in yyyy-MM format, e.g. 2026-09")
     }

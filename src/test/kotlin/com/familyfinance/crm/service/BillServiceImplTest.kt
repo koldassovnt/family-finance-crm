@@ -110,8 +110,9 @@ class BillServiceImplTest {
     fun `unpaid true returns outstanding bills regardless of month`() {
         val overdue = bill(owner, name = "Electricity", dueDate = LocalDate.of(2026, 8, 25))
         val upcoming = bill(owner, name = "Netflix", dueDate = LocalDate.of(2026, 9, 28))
-        every { billRepository.findAllByOwnerAndIsPaidOrderByDueDateAscNameAsc(owner, false) } returns
-            listOf(overdue, upcoming)
+        val settled = bill(owner, name = "Water", dueDate = LocalDate.of(2026, 9, 5), isPaid = true)
+        every { billRepository.findAllByOwnerOrderByDueDateAscNameAsc(owner) } returns
+            listOf(overdue, settled, upcoming)
 
         val listed = service.list(owner, month = null, unpaid = true).resources
 
@@ -123,7 +124,7 @@ class BillServiceImplTest {
     @Test
     fun `unpaid false returns settled bills`() {
         val paid = bill(owner, isPaid = true)
-        every { billRepository.findAllByOwnerAndIsPaidOrderByDueDateAscNameAsc(owner, true) } returns listOf(paid)
+        every { billRepository.findAllByOwnerOrderByDueDateAscNameAsc(owner) } returns listOf(paid, bill(owner))
 
         assertEquals(1, service.list(owner, month = null, unpaid = false).size)
     }
@@ -131,14 +132,12 @@ class BillServiceImplTest {
     @Test
     fun `month and unpaid combine into one narrower filter`() {
         val subject = bill(owner, dueDate = LocalDate.of(2026, 9, 15))
-        every {
-            billRepository.findAllByOwnerAndIsPaidAndDueDateBetweenOrderByDueDateAscNameAsc(
-                owner,
-                false,
-                LocalDate.of(2026, 9, 1),
-                LocalDate.of(2026, 9, 30),
+        every { billRepository.findAllByOwnerOrderByDueDateAscNameAsc(owner) } returns
+            listOf(
+                subject,
+                bill(owner, dueDate = LocalDate.of(2026, 9, 16), isPaid = true),
+                bill(owner, dueDate = LocalDate.of(2026, 10, 1)),
             )
-        } returns listOf(subject)
 
         val listed = service.list(owner, month = YearMonth.of(2026, 9), unpaid = true)
 
@@ -149,13 +148,8 @@ class BillServiceImplTest {
     fun `month alone does not filter on paid status`() {
         val paid = bill(owner, dueDate = LocalDate.of(2026, 9, 15), isPaid = true)
         val unpaid = bill(owner, dueDate = LocalDate.of(2026, 9, 20))
-        every {
-            billRepository.findAllByOwnerAndDueDateBetweenOrderByDueDateAscNameAsc(
-                owner,
-                LocalDate.of(2026, 9, 1),
-                LocalDate.of(2026, 9, 30),
-            )
-        } returns listOf(paid, unpaid)
+        val october = bill(owner, dueDate = LocalDate.of(2026, 10, 1))
+        every { billRepository.findAllByOwnerOrderByDueDateAscNameAsc(owner) } returns listOf(paid, unpaid, october)
 
         assertEquals(2, service.list(owner, month = YearMonth.of(2026, 9), unpaid = null).size)
     }

@@ -131,13 +131,6 @@ fun TopicWithTotals.toResponse() =
         lastTransactionOn = lastTransactionOn,
     )
 
-fun TopicDetail.toResponse() =
-    TopicDetailResponse(
-        topic = totals.toResponse(),
-        expenseByCategory = expenseByCategory.map { it.toSummary() },
-        incomeByCategory = incomeByCategory.map { it.toSummary() },
-    )
-
 fun BudgetWithUsage.toResponse() =
     BudgetResponse(
         id = budget.requiredId(),

@@ -46,7 +46,7 @@ class TransactionServiceImpl(
             )
         }
         val accountId = request.accountId ?: throw invalidField("accountId", "is required")
-        val amount = requirePositiveAmount(request.amount)
+        val amount = requirePositive(request.amount, "amount")
         val account = accountService.getOwnedBy(accountId, owner)
         val occurredOn = resolveOccurredOn(request.occurredOn)
         val rate = resolveExchangeRate(request.exchangeRate, account)
@@ -99,7 +99,7 @@ class TransactionServiceImpl(
                 if (transaction.type == TransactionType.ADJUSTMENT) {
                     requireNonZeroAmount(amount)
                 } else {
-                    requirePositiveAmount(amount)
+                    requirePositive(amount, "amount")
                 }
             }
         val newToAmount = resolveToAmountPatch(request, transaction)
@@ -131,7 +131,7 @@ class TransactionServiceImpl(
             }
             transaction.topic = newTopic?.let { topicService.getOwnedBy(it, owner) }
         }
-        request.note?.let { transaction.note = it.orElse(null)?.let(::validateNote) }
+        request.note?.let { transaction.note = it.orElse(null)?.let({ requireMaxLength(it, "note") }) }
         return transaction
     }
 
@@ -241,7 +241,7 @@ class TransactionServiceImpl(
                     toAccount = null,
                     // An ADJUSTMENT carries no category — it isn't spending.
                     category = null,
-                    note = request.note?.let(::validateNote),
+                    note = request.note?.let({ requireMaxLength(it, "note") }),
                 ),
             )
         saved.applyToBalances(APPLY)
@@ -275,7 +275,7 @@ class TransactionServiceImpl(
             toAccount = null,
             category = request.categoryId?.let { resolveCategory(it, type, owner) },
             topic = request.topicId?.let { topicService.getOwnedBy(it, owner) },
-            note = request.note?.let(::validateNote),
+            note = request.note?.let({ requireMaxLength(it, "note") }),
         )
     }
 
@@ -312,7 +312,7 @@ class TransactionServiceImpl(
             account = account,
             toAccount = toAccount,
             category = null,
-            note = request.note?.let(::validateNote),
+            note = request.note?.let({ requireMaxLength(it, "note") }),
         )
     }
 
@@ -338,7 +338,7 @@ class TransactionServiceImpl(
                 "is required when changing the amount of a cross-currency TRANSFER",
             )
         }
-        return request.toAmount?.let { requirePositiveAmount(it, field = "toAmount") }
+        return request.toAmount?.let { requirePositive(it, "toAmount") }
     }
 
     /**
@@ -365,7 +365,7 @@ class TransactionServiceImpl(
             }
 
             crossCurrency -> {
-                requirePositiveAmount(toAmount, field = "toAmount")
+                requirePositive(toAmount, "toAmount")
             }
 
             else -> {
@@ -420,17 +420,18 @@ class TransactionServiceImpl(
         exchangeRate: BigDecimal?,
         account: Account,
     ): BigDecimal =
-        if (account.currency == BASE_CURRENCY) {
-            validateExchangeRate(exchangeRate ?: BigDecimal.ONE, account.currency)
-        } else {
-            validateExchangeRate(
-                exchangeRate ?: throw invalidField(
-                    "exchangeRate",
-                    "is required for a ${account.currency} account: give the $BASE_CURRENCY value of 1 ${account.currency}",
-                ),
-                account.currency,
-            )
-        }
+        validateExchangeRate(
+            exchangeRate
+                ?: if (account.currency == BASE_CURRENCY) {
+                    BigDecimal.ONE
+                } else {
+                    throw invalidField(
+                        "exchangeRate",
+                        "is required for a ${account.currency} account: give the $BASE_CURRENCY value of 1 ${account.currency}",
+                    )
+                },
+            account.currency,
+        )
 
     private fun validateExchangeRate(
         exchangeRate: BigDecimal,
@@ -442,19 +443,8 @@ class TransactionServiceImpl(
         }
         return exchangeRate
     }
-
-    private fun validateNote(note: String): String {
-        if (note.length > MAX_NOTE_LENGTH) {
-            throw invalidField("note", "must be at most $MAX_NOTE_LENGTH characters")
-        }
-        return note
-    }
 }
 
-/** Only these may belong to a topic — see [TopicService]. */
-private val TOPIC_TYPES = setOf(TransactionType.INCOME, TransactionType.EXPENSE)
-
-private const val MAX_NOTE_LENGTH = 1000
 private const val MONEY_SCALE = 4
 private const val APPLY = 1
 private const val REVERSE = -1
@@ -467,17 +457,13 @@ private const val REVERSE = -1
 private fun Transaction.applyToBalances(direction: Int) {
     val signed = amount.multiply(BigDecimal(direction))
     when (type) {
-        TransactionType.INCOME -> {
+        // ADJUSTMENT is the only type whose amount may be negative; the drift can go either way.
+        TransactionType.INCOME, TransactionType.ADJUSTMENT -> {
             account.balance += signed
         }
 
         TransactionType.EXPENSE -> {
             account.balance -= signed
-        }
-
-        // The only type whose amount may be negative; the drift can go either way.
-        TransactionType.ADJUSTMENT -> {
-            account.balance += signed
         }
 
         TransactionType.TRANSFER -> {
@@ -494,15 +480,6 @@ private fun toKzt(
     amount: BigDecimal,
     exchangeRate: BigDecimal,
 ): BigDecimal = amount.multiply(exchangeRate).setScale(MONEY_SCALE, RoundingMode.HALF_UP)
-
-private fun requirePositiveAmount(
-    amount: BigDecimal?,
-    field: String = "amount",
-): BigDecimal {
-    val value = amount ?: throw invalidField(field, "is required")
-    if (value.signum() <= 0) throw invalidField(field, "must be greater than zero")
-    return value
-}
 
 private fun requireNonZeroAmount(amount: BigDecimal): BigDecimal {
     if (amount.signum() == 0) throw invalidField("amount", "must not be zero")

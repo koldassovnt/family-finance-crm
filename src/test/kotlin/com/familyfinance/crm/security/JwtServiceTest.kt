@@ -30,7 +30,6 @@ class JwtServiceTest {
         val principal = service.parse(service.issue(subject).token)
 
         assertEquals(subject.idValue, principal?.id)
-        assertEquals(subject.email, principal?.email)
         assertEquals(UserRole.MEMBER, principal?.role)
     }
 

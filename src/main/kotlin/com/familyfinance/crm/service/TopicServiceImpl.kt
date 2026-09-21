@@ -9,6 +9,7 @@ import com.familyfinance.crm.domain.TransactionType
 import com.familyfinance.crm.domain.User
 import com.familyfinance.crm.dto.CreateTopicRequest
 import com.familyfinance.crm.dto.UpdateTopicRequest
+import com.familyfinance.crm.dto.requiredId
 import com.familyfinance.crm.exception.ConflictException
 import com.familyfinance.crm.exception.NotFoundException
 import com.familyfinance.crm.exception.ValidationException
@@ -117,10 +118,10 @@ class TopicServiceImpl(
                 Topic(
                     owner = owner,
                     name = name,
-                    description = request.description?.let(::requireShortDescription),
+                    description = request.description?.let { requireMaxLength(it, "description") },
                     startDate = request.startDate,
                     endDate = request.endDate,
-                    plannedAmount = request.plannedAmount?.let(::requirePositivePlannedAmount),
+                    plannedAmount = request.plannedAmount?.let { requirePositive(it, "plannedAmount") },
                     status = TopicStatus.ACTIVE,
                 ),
             )
@@ -142,13 +143,13 @@ class TopicServiceImpl(
     ): TopicWithTotals {
         val topic = getOwnedBy(id, owner)
         request.name?.let { topic.name = requireAvailableName(owner, it, excludedId = topic.id) }
-        request.description?.let { topic.description = it.orElse(null)?.let(::requireShortDescription) }
+        request.description?.let { topic.description = it.orElse(null)?.let { d -> requireMaxLength(d, "description") } }
         request.startDate?.let { topic.startDate = it.orElse(null) }
         request.endDate?.let { topic.endDate = it.orElse(null) }
         // Checked after both are applied: either one alone can invert the range.
         requireOrderedDates(topic.startDate, topic.endDate)
         request.plannedAmount?.let {
-            topic.plannedAmount = it.orElse(null)?.let(::requirePositivePlannedAmount)
+            topic.plannedAmount = it.orElse(null)?.let { amount -> requirePositive(amount, "plannedAmount") }
         }
         request.status?.let { topic.status = it }
         return totalsFor(topic)
@@ -188,7 +189,7 @@ class TopicServiceImpl(
         }
         return transactionRepository.findTopicCandidates(
             owner = owner,
-            types = ATTACHABLE_TYPES,
+            types = TOPIC_TYPES,
             from = from,
             to = to,
         )
@@ -204,17 +205,17 @@ class TopicServiceImpl(
         val requested = transactionIds.distinct()
         val found = transactionRepository.findAllDetailedByIds(requested)
 
-        val byId = found.associateBy { it.requiredIdOf() }
+        val byId = found.associateBy { it.requiredId() }
         val missing = requested.filter { byId[it]?.account?.owner != owner }
         if (missing.isNotEmpty()) {
             // Foreign ids read as missing, exactly as a single-id lookup would.
             throw NotFoundException("Transactions not found: ${missing.joinToString()}")
         }
-        val wrongType = found.filterNot { it.type in ATTACHABLE_TYPES }
+        val wrongType = found.filterNot { it.type in TOPIC_TYPES }
         if (wrongType.isNotEmpty()) {
             throw ValidationException(
                 "Only INCOME and EXPENSE transactions can belong to a topic; " +
-                    "rejected: ${wrongType.joinToString { "${it.requiredIdOf()} (${it.type})" }}",
+                    "rejected: ${wrongType.joinToString { "${it.requiredId()} (${it.type})" }}",
                 mapOf("transactionIds" to "must all be INCOME or EXPENSE"),
             )
         }
@@ -275,32 +276,12 @@ class TopicServiceImpl(
         name: String,
         excludedId: UUID?,
     ): String {
-        val trimmed = name.trim()
-        if (trimmed.isEmpty()) throw invalidField("name", "must not be blank")
+        val trimmed = requireNonBlankName(name)
         if (topicRepository.existsByName(owner = owner, name = trimmed, excludedId = excludedId)) {
             throw ConflictException("A topic named '$trimmed' already exists")
         }
         return trimmed
     }
-}
-
-/** A transfer would count both the withdrawal and whatever it paid for. */
-private val ATTACHABLE_TYPES = setOf(TransactionType.INCOME, TransactionType.EXPENSE)
-
-private const val MAX_DESCRIPTION_LENGTH = 1000
-
-private fun Transaction.requiredIdOf(): UUID = checkNotNull(id) { "Transaction has not been persisted yet" }
-
-private fun requireShortDescription(description: String): String {
-    if (description.length > MAX_DESCRIPTION_LENGTH) {
-        throw invalidField("description", "must be at most $MAX_DESCRIPTION_LENGTH characters")
-    }
-    return description
-}
-
-private fun requirePositivePlannedAmount(amount: BigDecimal): BigDecimal {
-    if (amount.signum() <= 0) throw invalidField("plannedAmount", "must be greater than zero")
-    return amount
 }
 
 private fun requireOrderedDates(

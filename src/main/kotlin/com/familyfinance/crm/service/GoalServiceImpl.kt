@@ -48,7 +48,7 @@ class GoalServiceImpl(
         val type = request.type ?: throw invalidField("type", "is required")
         val linkedAccountId =
             request.linkedAccountId ?: throw invalidField("linkedAccountId", "is required")
-        val targetAmount = requirePositiveTarget(request.targetAmount)
+        val targetAmount = requirePositive(request.targetAmount, "targetAmount")
         val linkedAccount = accountService.getOwnedBy(linkedAccountId, owner)
         val saved =
             goalRepository.save(
@@ -73,7 +73,7 @@ class GoalServiceImpl(
     ): GoalWithProgress {
         val goal = getOwnedBy(id, owner)
         request.name?.let { goal.name = requireNonBlankName(it) }
-        request.targetAmount?.let { goal.targetAmount = requirePositiveTarget(it) }
+        request.targetAmount?.let { goal.targetAmount = requirePositive(it, "targetAmount") }
         request.targetDate?.let { goal.targetDate = it.orElse(null) }
         request.status?.let { goal.status = requireReactivatable(it, goal) }
         return withProgress(goal)
@@ -121,12 +121,6 @@ class GoalServiceImpl(
 
 private const val PERCENT_SCALE = 2
 private val HUNDRED = BigDecimal(100)
-
-private fun requirePositiveTarget(targetAmount: BigDecimal?): BigDecimal {
-    val value = targetAmount ?: throw invalidField("targetAmount", "is required")
-    if (value.signum() <= 0) throw invalidField("targetAmount", "must be greater than zero")
-    return value
-}
 
 /**
  * Progress is the linked account's balance against the target, clamped to
