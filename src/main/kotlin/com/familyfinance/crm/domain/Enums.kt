@@ -60,4 +60,10 @@ enum class ShareScope {
 
     val includesOwn: Boolean get() = this != SHARED
     val includesShared: Boolean get() = this != OWN
+
+    /** Own rows first, then shared — each side only loaded when in scope. */
+    fun <T> collect(
+        own: () -> List<T>,
+        shared: () -> List<T>,
+    ): List<T> = (if (includesOwn) own() else emptyList()) + (if (includesShared) shared() else emptyList())
 }

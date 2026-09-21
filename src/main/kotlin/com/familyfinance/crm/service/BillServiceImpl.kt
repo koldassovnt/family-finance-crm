@@ -32,21 +32,11 @@ class BillServiceImpl(
         month: YearMonth?,
         unpaid: Boolean?,
         scope: ShareScope,
-    ): List<Readable<BillWithStatus>> {
-        val own =
-            if (scope.includesOwn) {
-                listOwn(reader, month, unpaid).map { Readable.Own(it) }
-            } else {
-                emptyList()
-            }
-        val shared =
-            if (scope.includesShared) {
-                listShared(reader, month, unpaid)
-            } else {
-                emptyList()
-            }
-        return own + shared
-    }
+    ): List<Readable<BillWithStatus>> =
+        scope.collect(
+            own = { listOwn(reader, month, unpaid).map { Readable.Own(it) } },
+            shared = { listShared(reader, month, unpaid) },
+        )
 
     private fun listOwn(
         owner: User,

@@ -6,12 +6,6 @@ import com.familyfinance.crm.domain.User
 import com.familyfinance.crm.dto.CreateShareRequest
 import java.util.UUID
 
-/** A grant plus the name of the thing it points at, so a list row needs no second call. */
-data class ShareSummary(
-    val share: Share,
-    val resourceName: String,
-)
-
 /**
  * Granting and revoking. The read side lives in [ShareAccessService], which the
  * five resource services depend on; this one depends on *them*, to check that a
@@ -36,9 +30,12 @@ interface ShareService {
         owner: User,
     )
 
-    /** Everything shared with me, across all five types. */
-    fun incoming(grantee: User): List<ShareSummary>
+    /**
+     * Everything shared with me, across all five types, each paired with the
+     * shared thing's name so a list row needs no second call.
+     */
+    fun incoming(grantee: User): List<Pair<Share, String>>
 
     /** Everything I have shared, so revoking does not mean visiting five pages. */
-    fun outgoing(owner: User): List<ShareSummary>
+    fun outgoing(owner: User): List<Pair<Share, String>>
 }

@@ -34,29 +34,25 @@ class TopicServiceImpl(
         status: TopicStatus?,
         scope: ShareScope,
     ): List<Readable<TopicWithTotals>> {
-        val own =
-            if (scope.includesOwn) {
-                if (status == null) {
-                    topicRepository.findAllActiveByOwner(reader)
-                } else {
-                    topicRepository.findAllByOwnerAndStatus(reader, status)
-                }.map { Readable.Own(it) }
-            } else {
-                emptyList()
-            }
-        val shared =
-            if (scope.includesShared) {
-                shareAccess
-                    .sharedWith(
-                        reader = reader,
-                        resourceType = ShareResourceType.TOPIC,
-                        load = topicRepository::findAllActiveByIds,
-                        ownerOf = Topic::owner,
-                    ).filter { status == null || it.resource.status == status }
-            } else {
-                emptyList()
-            }
-        val readable = own + shared
+        val readable =
+            scope.collect(
+                own = {
+                    if (status == null) {
+                        topicRepository.findAllActiveByOwner(reader)
+                    } else {
+                        topicRepository.findAllByOwnerAndStatus(reader, status)
+                    }.map { Readable.Own(it) }
+                },
+                shared = {
+                    shareAccess
+                        .sharedWith(
+                            reader = reader,
+                            resourceType = ShareResourceType.TOPIC,
+                            load = topicRepository::findAllActiveByIds,
+                            ownerOf = Topic::owner,
+                        ).filter { status == null || it.resource.status == status }
+                },
+            )
         // One aggregate query for every topic on the page, own and shared alike,
         // rather than a sum per row.
         val totals = totalsByTopic(readable.map { it.resource })

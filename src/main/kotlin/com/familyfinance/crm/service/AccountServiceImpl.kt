@@ -28,26 +28,18 @@ class AccountServiceImpl(
     override fun list(
         reader: User,
         scope: ShareScope,
-    ): List<Readable<Account>> {
-        val own =
-            if (scope.includesOwn) {
-                accountRepository.findAllActiveByOwner(reader).map { Readable.Own(it) }
-            } else {
-                emptyList()
-            }
-        val shared =
-            if (scope.includesShared) {
+    ): List<Readable<Account>> =
+        scope.collect(
+            own = { accountRepository.findAllActiveByOwner(reader).map { Readable.Own(it) } },
+            shared = {
                 shareAccess.sharedWith(
                     reader = reader,
                     resourceType = ShareResourceType.ACCOUNT,
                     load = accountRepository::findAllActiveByIds,
                     ownerOf = Account::owner,
                 )
-            } else {
-                emptyList()
-            }
-        return own + shared
-    }
+            },
+        )
 
     @Transactional(readOnly = true)
     override fun getOwnedBy(

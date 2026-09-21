@@ -9,8 +9,11 @@ import com.familyfinance.crm.exception.ConflictException
 import com.familyfinance.crm.exception.NotFoundException
 import com.familyfinance.crm.exception.ValidationException
 import com.familyfinance.crm.idValue
+import com.familyfinance.crm.repository.AccountRepository
 import com.familyfinance.crm.repository.ShareRepository
+import com.familyfinance.crm.repository.TopicRepository
 import com.familyfinance.crm.share
+import com.familyfinance.crm.topic
 import com.familyfinance.crm.user
 import com.familyfinance.crm.withId
 import io.mockk.every
@@ -26,8 +29,24 @@ import kotlin.test.assertTrue
 class ShareServiceImplTest {
     private val shareRepository = mockk<ShareRepository>()
     private val userService = mockk<UserService>()
-    private val shareableResources = mockk<ShareableResourceService>()
-    private val service = ShareServiceImpl(shareRepository, userService, shareableResources)
+    private val accountService = mockk<AccountService>()
+    private val accountRepository = mockk<AccountRepository>()
+    private val topicRepository = mockk<TopicRepository>()
+    private val service =
+        ShareServiceImpl(
+            shareRepository = shareRepository,
+            userService = userService,
+            accountService = accountService,
+            goalService = mockk(),
+            budgetService = mockk(),
+            billService = mockk(),
+            topicService = mockk(),
+            accountRepository = accountRepository,
+            goalRepository = mockk(),
+            budgetRepository = mockk(),
+            billRepository = mockk(),
+            topicRepository = topicRepository,
+        )
 
     private val owner = user()
     private val grantee = user(email = "member@example.com")
@@ -35,7 +54,7 @@ class ShareServiceImplTest {
 
     init {
         every { shareRepository.save(any<Share>()) } answers { firstArg<Share>().withId() }
-        every { shareableResources.requireOwned(any(), any(), any()) } returns Unit
+        every { accountService.getOwnedBy(any(), any()) } returns subject
         every { userService.getById(grantee.idValue) } returns grantee
         every { shareRepository.findGrant(any(), any(), any()) } returns null
     }
@@ -62,7 +81,7 @@ class ShareServiceImplTest {
     @Test
     fun `sharing something you do not own is rejected before the grantee is even resolved`() {
         every {
-            shareableResources.requireOwned(owner, ShareResourceType.ACCOUNT, subject.idValue)
+            accountService.getOwnedBy(subject.idValue, owner)
         } throws NotFoundException("Account was not found")
 
         assertThrows<NotFoundException> { service.grant(owner, request()) }
@@ -117,7 +136,7 @@ class ShareServiceImplTest {
     @Test
     fun `who a resource is shared with requires owning it`() {
         every {
-            shareableResources.requireOwned(grantee, ShareResourceType.ACCOUNT, subject.idValue)
+            accountService.getOwnedBy(subject.idValue, grantee)
         } throws NotFoundException("Account was not found")
 
         // A viewer of this very account gets the same 404 as a stranger: who else
@@ -129,20 +148,18 @@ class ShareServiceImplTest {
 
     @Test
     fun `an incoming row carries the resource's name, resolved once per type`() {
-        val topicId = UUID.randomUUID()
+        val trip = topic(owner, name = "Малайзия 2026")
         every { shareRepository.findAllIncoming(grantee) } returns
             listOf(
                 share(owner, grantee, ShareResourceType.ACCOUNT, subject.idValue),
-                share(owner, grantee, ShareResourceType.TOPIC, topicId),
+                share(owner, grantee, ShareResourceType.TOPIC, trip.idValue),
             )
-        every { shareableResources.namesOf(ShareResourceType.ACCOUNT, listOf(subject.idValue)) } returns
-            mapOf(subject.idValue to "Main")
-        every { shareableResources.namesOf(ShareResourceType.TOPIC, listOf(topicId)) } returns
-            mapOf(topicId to "Малайзия 2026")
+        every { accountRepository.findAllActiveByIds(listOf(subject.idValue)) } returns listOf(subject)
+        every { topicRepository.findAllActiveByIds(listOf(trip.idValue)) } returns listOf(trip)
 
         val incoming = service.incoming(grantee)
 
-        assertEquals(listOf("Main", "Малайзия 2026"), incoming.map { it.resourceName })
+        assertEquals(listOf("Main", "Малайзия 2026"), incoming.map { (_, name) -> name })
     }
 
     @Test
@@ -151,7 +168,7 @@ class ShareServiceImplTest {
             listOf(share(owner, grantee, ShareResourceType.ACCOUNT, subject.idValue))
         // Deleted resources have no name to resolve: the grant stays on the books,
         // but the thing has stopped appearing for everyone.
-        every { shareableResources.namesOf(ShareResourceType.ACCOUNT, listOf(subject.idValue)) } returns emptyMap()
+        every { accountRepository.findAllActiveByIds(listOf(subject.idValue)) } returns emptyList()
 
         assertTrue(service.outgoing(owner).isEmpty())
     }

@@ -45,18 +45,16 @@ class BudgetServiceImpl(
         if (month.isAfter(currentMonth())) {
             throw invalidField("month", "must not be in the future")
         }
-        val own =
-            if (scope.includesOwn) {
+        return scope.collect(
+            own = {
                 usageFor(
                     versions = budgetVersionRepository.findInForce(reader, month.atDay(1)),
                     owner = reader,
                     month = month,
                 ).map { Readable.Own(it) }
-            } else {
-                emptyList()
-            }
-        val shared = if (scope.includesShared) sharedUsage(reader, month) else emptyList()
-        return own + shared
+            },
+            shared = { sharedUsage(reader, month) },
+        )
     }
 
     /**

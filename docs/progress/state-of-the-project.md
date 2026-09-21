@@ -79,8 +79,8 @@ What that means in the code, so the next session does not have to rediscover it:
   owner on a response both come from it — a response cannot claim to be shared
   without saying whose it is.
 - `ShareAccessService` (the read side) is what the five resource services
-  depend on; `ShareService` (grant/revoke) depends on *them*, through
-  `ShareableResourceService`, so the dependency runs one way.
+  depend on; `ShareService` (grant/revoke) depends on *them*, so the
+  dependency runs one way.
 - **A shared budget's usage is its owner's spending**, computed per owner.
   Getting that wrong would answer the wrong question silently rather than fail,
   which is why it has its own test.

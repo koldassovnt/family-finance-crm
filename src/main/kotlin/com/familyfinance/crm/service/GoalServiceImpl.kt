@@ -26,15 +26,10 @@ class GoalServiceImpl(
     override fun list(
         reader: User,
         scope: ShareScope,
-    ): List<Readable<GoalWithProgress>> {
-        val own =
-            if (scope.includesOwn) {
-                goalRepository.findAllByOwner(reader).map { Readable.Own(withProgress(it)) }
-            } else {
-                emptyList()
-            }
-        val shared =
-            if (scope.includesShared) {
+    ): List<Readable<GoalWithProgress>> =
+        scope.collect(
+            own = { goalRepository.findAllByOwner(reader).map { Readable.Own(withProgress(it)) } },
+            shared = {
                 shareAccess
                     .sharedWith(
                         reader = reader,
@@ -42,11 +37,8 @@ class GoalServiceImpl(
                         load = goalRepository::findAllDetailedByIds,
                         ownerOf = Goal::owner,
                     ).map { readable -> readable.map(::withProgress) }
-            } else {
-                emptyList()
-            }
-        return own + shared
-    }
+            },
+        )
 
     @Transactional
     override fun create(

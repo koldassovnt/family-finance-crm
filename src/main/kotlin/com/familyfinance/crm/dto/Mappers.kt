@@ -13,7 +13,6 @@ import com.familyfinance.crm.service.BillWithStatus
 import com.familyfinance.crm.service.BudgetWithUsage
 import com.familyfinance.crm.service.GoalWithProgress
 import com.familyfinance.crm.service.Readable
-import com.familyfinance.crm.service.ShareSummary
 import com.familyfinance.crm.service.TopicDetail
 import com.familyfinance.crm.service.TopicWithTotals
 import java.time.YearMonth
@@ -75,8 +74,6 @@ fun Share.toResponse(resourceName: String? = null) =
         access = access,
         sharedAt = createdAt,
     )
-
-fun ShareSummary.toResponse() = share.toResponse(resourceName = resourceName)
 
 /** The embedded form: everything a goal needs, and no claim about access. */
 fun Account.toLinkedResponse() =

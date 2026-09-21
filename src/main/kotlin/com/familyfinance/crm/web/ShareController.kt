@@ -110,7 +110,7 @@ class ShareController(
                 "deleted stops appearing here, as it does for them.",
     )
     @ApiResponse(responseCode = "200", description = "Grants held by you")
-    fun incoming(): List<ShareResponse> = shareService.incoming(currentUser.require()).map { it.toResponse() }
+    fun incoming(): List<ShareResponse> = shareService.incoming(currentUser.require()).map { (share, name) -> share.toResponse(name) }
 
     @GetMapping("/outgoing")
     @Operation(
@@ -118,5 +118,5 @@ class ShareController(
         description = "One screen to review and revoke from, rather than visiting five resource pages.",
     )
     @ApiResponse(responseCode = "200", description = "Grants made by you")
-    fun outgoing(): List<ShareResponse> = shareService.outgoing(currentUser.require()).map { it.toResponse() }
+    fun outgoing(): List<ShareResponse> = shareService.outgoing(currentUser.require()).map { (share, name) -> share.toResponse(name) }
 }
