@@ -189,32 +189,61 @@ as long as Docker itself starts at boot (`systemctl enable docker`).
 
 ### 6. Back it up
 
-The requirements call backups unnecessary on a personal machine. On a real
-server holding your family's finances, they are not. The whole database is one
-volume:
+Backups are required — the spec is "Backups" under Non-Functional
+Requirements in `.claude/requirements/00-architecture-and-foundations.md`.
+The `backup` compose service (`db/backup.sh`) does it: a `pg_dump` custom-format
+file every night at 03:00 Almaty time into `BACKUP_DIR`, keeping the last 14
+nightly dumps plus the first of each month for 12 months. Set the folder in
+`.env`, on a different physical disk from Docker's data:
 
 ```bash
-# Dump (small; this database stays in the megabytes for years)
-docker exec family-finance-postgres \
-  pg_dump -U family_finance family_finance | gzip > backup-$(date +%F).sql.gz
-
-# Restore into an empty database
-gunzip -c backup-2026-09-19.sql.gz | \
-  docker exec -i family-finance-postgres psql -U family_finance -d family_finance
+BACKUP_DIR=D:/family-finance-backups
 ```
 
-A nightly cron with a fortnight of retention is enough:
+On start it takes a dump straight away if none is under 26 hours old. Files
+are named `family_finance-YYYY-MM-DD_HHMM.dump`, about 40 KB each today.
 
-```cron
-0 3 * * * cd /srv/family-finance-crm && docker exec family-finance-postgres pg_dump -U family_finance family_finance | gzip > backups/$(date +\%F).sql.gz && find backups -name '*.sql.gz' -mtime +14 -delete
+```bash
+# On demand — always before an upgrade
+docker compose --profile app exec backup sh /scripts/backup.sh run
+
+# Is it working? "unhealthy" means the newest dump is over 26 hours old
+docker compose --profile app ps backup
+docker compose --profile app logs backup
 ```
 
-Test a restore once. An untested backup is a guess.
+**Test a restore** into a throwaway database, never over the live one — once
+after setup, and after every Postgres major-version upgrade. An untested
+backup is a guess:
+
+```bash
+docker compose --profile app exec backup sh -c '
+  createdb restore_test &&
+  pg_restore --dbname=restore_test --no-owner --exit-on-error /backups/family_finance-2026-10-02_2313.dump &&
+  psql -d restore_test -c "select email, role from users" ;
+  dropdb restore_test'
+```
+
+**A real restore** replaces the live database, so stop the app first and
+take one more dump of the current state, in case the backup is the wrong one:
+
+```bash
+docker compose --profile app stop app
+docker compose --profile app exec backup sh /scripts/backup.sh run
+docker compose --profile app exec backup \
+  pg_restore --dbname=family_finance --clean --if-exists --no-owner --exit-on-error \
+  /backups/family_finance-YYYY-MM-DD_HHMM.dump
+docker compose --profile app start app
+```
+
+Flyway validates the restored schema on start; a dump from a newer version of
+the code than you are running fails loudly there rather than half-working.
 
 ### 7. Upgrading
 
 ```bash
 git pull
+docker compose --profile app exec backup sh /scripts/backup.sh run
 ./gradlew build
 docker compose --profile app up -d --build
 ```

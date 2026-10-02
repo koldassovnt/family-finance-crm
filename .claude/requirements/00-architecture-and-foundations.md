@@ -188,8 +188,39 @@ Implications, so nothing gets missed when this is built:
 - **Security:** this is the most sensitive personal data hosted here —
   encrypt at rest; don't expose the API beyond the home network/VPN without
   auth hardening.
-- **Backups:** not needed for now — running as a Docker container on a
-  personal PC, not a production host. Revisit if that deployment target changes.
+- **Backups: required** (decided 2026-10-02, when this Windows PC became the
+  production host — the earlier "not needed" assumed a disposable personal
+  setup). The database lives inside Docker Desktop's VM disk, which a Docker
+  reset, a "Purge data" or an uninstall deletes outright; one dump on another
+  disk turns any of those into an inconvenience.
+  - **What:** the whole `family_finance` database, as a `pg_dump` custom-format
+    file (`-Fc`: compressed, restorable with `pg_restore`). Nothing else needs
+    keeping — `.env` secrets are replaceable (a new `JWT_SECRET` only logs
+    everyone out; a restore into a fresh volume takes a new `DB_PASSWORD`).
+  - **Where:** a folder on the **D: drive** — a separate physical disk from
+    C:, where Docker Desktop and its data live. Configurable (`BACKUP_DIR` in
+    `.env`), outside the repo. **Local only, no off-site copy** — chosen
+    deliberately: it survives a C: failure and a Docker reset, not theft, fire
+    or anything that takes the whole PC. Dumps are not encrypted by the app;
+    at-rest protection for them is the disk's (Windows device encryption /
+    BitLocker), same as the live database.
+  - **How:** a `backup` service in `compose.yaml`, in the `app` profile so a
+    local dev stack never writes to D:. It uses the same `postgres:17-alpine`
+    image as the database, so `pg_dump` always matches the server's major
+    version, and runs on its own schedule inside Docker — no Windows Task
+    Scheduler, and it runs exactly when the database does.
+  - **When:** nightly at **03:00 Asia/Almaty**, and on demand
+    (`docker compose --profile app exec backup sh /scripts/backup.sh run`) — always before an upgrade.
+  - **Retention:** the last **14 nightly** dumps plus the **first dump of each
+    month for 12 months**. The database is megabytes, so space is no concern;
+    the monthly tail covers a mistake noticed weeks later.
+  - **Integrity:** dump to a temporary name and rename only on success, so a
+    half-written file is never mistaken for a backup. A failed dump must be
+    loud: the `backup` container reports **unhealthy** when the newest dump is
+    older than 26 hours, so `docker compose ps` shows it.
+  - **Restore** is documented in `docs/running-the-service.md` and **tested
+    once** after setup and after every Postgres major-version upgrade, into a
+    throwaway database, never over the live one. An untested backup is a guess.
 - **Testing:** unit tests are enough for now. Broader integration/end-to-end
   testing is deferred until the React frontend and Telegram bot exist to
   test against.

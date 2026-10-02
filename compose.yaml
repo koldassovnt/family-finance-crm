@@ -45,5 +45,41 @@ services:
       - "${APP_PORT:-8080}:8080"
     restart: unless-stopped
 
+  # Nightly pg_dump into BACKUP_DIR (a folder on another disk), 14 nightly +
+  # 12 monthly kept. Same image as the database so pg_dump always matches the
+  # server's major version. In the app profile so a dev stack never writes to
+  # BACKUP_DIR. See db/backup.sh.
+  backup:
+    profiles: ["app"]
+    image: postgres:17-alpine
+    container_name: family-finance-backup
+    depends_on:
+      postgres:
+        condition: service_healthy
+    entrypoint: ["sh", "/scripts/backup.sh"]
+    command: ["schedule"]
+    environment:
+      TZ: Asia/Almaty
+      PGHOST: postgres
+      PGDATABASE: family_finance
+      PGUSER: family_finance
+      PGPASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+    volumes:
+      - ${BACKUP_DIR:?set BACKUP_DIR in .env}:/backups
+      - ./db/backup.sh:/scripts/backup.sh:ro
+    healthcheck:
+      # Unhealthy once the newest dump is over 26 hours old.
+      test: ["CMD", "sh", "/scripts/backup.sh", "healthcheck"]
+      interval: 5m
+      timeout: 10s
+      start_period: 2m
+    restart: unless-stopped
+
+# Pinned: the frontend's compose joins this network by name, so it must not
+# follow the folder name or a `-p` override.
+networks:
+  default:
+    name: family-finance-crm_default
+
 volumes:
   family-finance-pgdata:

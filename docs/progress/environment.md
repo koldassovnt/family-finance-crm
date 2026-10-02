@@ -16,6 +16,11 @@ production secret, and none of it should survive a move to a real server.
 |---|---|---|
 | `family-finance-app` | 8080 | Health at `/actuator/health`, docs at `/swagger-ui.html` |
 | `family-finance-postgres` | 127.0.0.1:6432 → 5432 | Loopback only; **not 5432** — another project holds it |
+| `family-finance-backup` | — | Nightly 03:00 dumps into `BACKUP_DIR` = `D:/family-finance-backups` |
+
+The network is pinned to `family-finance-crm_default`: the frontend's own
+compose stack (`family-finance-web`, port 80, proxying `/api/` to
+`family-finance-app:8080`) joins it by that name.
 
 `.env` (gitignored) carries `JWT_SECRET`, `DB_PASSWORD`,
 `POSTGRES_PORT=127.0.0.1:6432` and `APP_PORT=8080`. The JWT secret must stay

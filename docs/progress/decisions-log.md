@@ -165,6 +165,18 @@ endpoint. Guarded by "no `OWNER` exists", so leftover variables are inert; the
 app warns while `OWNER_PASSWORD` is still set. Validation reuses
 `CreateUserRequest`'s constraints so the two paths cannot drift.
 
+**Backups run in a compose sidecar, not Windows Task Scheduler** (2026-10-02).
+The `backup` service uses the database's own image, so `pg_dump` matches the
+server's major version, and it runs exactly when the database does. busybox
+`crond` does not hand the container environment to its jobs, so the
+entrypoint writes the `PG*`/`TZ` variables to `/etc/backup.env` for the job to
+source. It dumps once on start when nothing is fresh, so the healthcheck is
+green from the first boot rather than red until 03:00.
+
+**The compose network name is pinned** to `family-finance-crm_default`, the
+name it already had, because the frontend's compose joins it as an external
+network; renaming the folder would otherwise have cut the frontend off.
+
 **`.gitattributes` pins `gradlew` to LF.** With `core.autocrlf=true` on Windows
 it was checked out with CRLF, and the Docker build's `./gradlew` failed with
 `not found`.
