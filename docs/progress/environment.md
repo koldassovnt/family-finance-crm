@@ -15,17 +15,19 @@ production secret, and none of it should survive a move to a real server.
 | Container | Port | Notes |
 |---|---|---|
 | `family-finance-app` | 8080 | Health at `/actuator/health`, docs at `/swagger-ui.html` |
-| `family-finance-postgres` | 55432 → 5432 | **Not 5432 on the host** — another project holds it |
+| `family-finance-postgres` | 127.0.0.1:6432 → 5432 | Loopback only; **not 5432** — another project holds it |
 
-`.env` (gitignored) carries `JWT_SECRET`, `POSTGRES_PORT=55432` and
-`APP_PORT=8080`. The secret must stay stable: rotating it invalidates every
-issued token.
+`.env` (gitignored) carries `JWT_SECRET`, `DB_PASSWORD`,
+`POSTGRES_PORT=127.0.0.1:6432` and `APP_PORT=8080`. The JWT secret must stay
+stable: rotating it invalidates every issued token.
 
-Database credentials are the compose defaults —
-`family_finance` / `family_finance` / `family_finance`:
+Since 2026-10-02 this machine is treated as the production host, so the
+database password is no longer the `family_finance` default — it is the
+generated `DB_PASSWORD` in `.env`. User and database name are still
+`family_finance`:
 
 ```bash
-psql postgresql://family_finance:family_finance@localhost:55432/family_finance
+psql "postgresql://family_finance:$DB_PASSWORD@localhost:6432/family_finance"
 docker exec -it family-finance-postgres psql -U family_finance -d family_finance
 ```
 

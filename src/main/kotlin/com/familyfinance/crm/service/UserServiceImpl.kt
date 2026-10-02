@@ -1,5 +1,6 @@
 package com.familyfinance.crm.service
 
+import com.familyfinance.crm.config.AppProperties.BootstrapOwnerProperties
 import com.familyfinance.crm.domain.User
 import com.familyfinance.crm.domain.UserRole
 import com.familyfinance.crm.dto.CreateUserRequest
@@ -8,6 +9,7 @@ import com.familyfinance.crm.exception.NotFoundException
 import com.familyfinance.crm.exception.UnauthenticatedException
 import com.familyfinance.crm.exception.invalidField
 import com.familyfinance.crm.repository.UserRepository
+import jakarta.validation.Validator
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -19,6 +21,7 @@ class UserServiceImpl(
     private val userRepository: UserRepository,
     private val passwordEncoder: PasswordEncoder,
     private val clock: Clock,
+    private val validator: Validator,
 ) : UserService {
     @Transactional(readOnly = true)
     override fun getById(id: UUID): User = userRepository.findById(id).orElseThrow { NotFoundException("User $id was not found") }
@@ -56,6 +59,39 @@ class UserServiceImpl(
                 passwordChangedAt = clock.instant(),
             ),
         )
+    }
+
+    @Transactional
+    override fun bootstrapOwner(config: BootstrapOwnerProperties): OwnerBootstrap {
+        if (userRepository.countByRole(UserRole.OWNER) > 0) return OwnerBootstrap.AlreadyExists
+        if (!config.isConfigured) return OwnerBootstrap.NotConfigured
+
+        // Same rules as any other user, so the OWNER cannot get a password the
+        // API would have refused.
+        val request =
+            CreateUserRequest(
+                email = config.email.trim(),
+                displayName = config.displayName.trim(),
+                password = config.password,
+            )
+        val problems = validator.validate(request).map { "${it.propertyPath} ${it.message}" }.sorted()
+        check(problems.isEmpty()) {
+            "Bootstrap owner (OWNER_EMAIL, OWNER_DISPLAY_NAME, OWNER_PASSWORD) is invalid: ${problems.joinToString("; ")}"
+        }
+        check(!userRepository.existsByEmailIgnoreCase(request.email)) {
+            "Bootstrap owner email ${request.email} already belongs to another user"
+        }
+
+        userRepository.save(
+            User(
+                email = request.email,
+                displayName = request.displayName,
+                passwordHash = passwordEncoder.encode(request.password),
+                role = UserRole.OWNER,
+                passwordChangedAt = clock.instant(),
+            ),
+        )
+        return OwnerBootstrap.Created(request.email)
     }
 
     @Transactional

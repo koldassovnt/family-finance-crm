@@ -6,20 +6,18 @@ categories and transactions, plus budgets, goals and bills.
 ## Running it
 
 ```bash
-docker compose up -d                    # local Postgres on 5432
+# .env (gitignored) must set JWT_SECRET and DB_PASSWORD first —
+# see docs/running-the-service.md
+docker compose up -d                    # Postgres on 127.0.0.1:6432
+export DB_PASSWORD='same-value-as-in-.env'
 export JWT_SECRET='at-least-32-bytes-of-random-secret'
 ./gradlew bootRun                       # Flyway applies the schema on startup
 ```
 
-Then create the single `OWNER` once, by hand — there is deliberately no
-endpoint for it:
-
-```bash
-./gradlew printPasswordHash -Ppassword='your-password'
-# paste the hash into db/bootstrap-owner.sql, then:
-psql postgresql://family_finance:family_finance@localhost:5432/family_finance \
-  -f db/bootstrap-owner.sql
-```
+The single `OWNER` is created on the first start that finds none, from
+`OWNER_EMAIL`, `OWNER_DISPLAY_NAME` and `OWNER_PASSWORD` — there is
+deliberately no endpoint for it. Once it exists the three are ignored: change
+the password through the API and delete `OWNER_PASSWORD` from `.env`.
 
 `POST /api/v1/auth/login` returns the bearer token every other endpoint wants.
 The browsable API contract lives at `/swagger-ui.html`.
@@ -28,24 +26,25 @@ The browsable API contract lives at `/swagger-ui.html`.
 
 ## Running it in Docker
 
-The `Dockerfile` builds the jar inside the image, so the host needs only
-Docker. The `app` profile runs it next to Postgres:
+The jar is built on the host and the `Dockerfile` only packages it, so the
+host needs a JDK 21 as well as Docker. The `app` profile runs it next to
+Postgres:
 
 ```bash
-export JWT_SECRET="$(openssl rand -hex 32)"   # keep it: rotating it logs everyone out
+cat > .env <<EOF
+JWT_SECRET=$(openssl rand -hex 32)
+DB_PASSWORD=$(openssl rand -hex 16)
+EOF
+./gradlew bootJar                       # always first: the image copies build/libs/app.jar
 docker compose --profile app up -d --build
 ```
 
-Flyway migrates on startup; bootstrap the `OWNER` as above, running `psql`
-inside the database container:
+Keep `JWT_SECRET` stable (rotating it logs everyone out), and set
+`DB_PASSWORD` before the first start: Postgres reads it only when the volume
+is created. Flyway migrates on startup; bootstrap the `OWNER` as above.
 
-```bash
-docker exec -i family-finance-postgres \
-  psql -U family_finance -d family_finance < db/bootstrap-owner.sql
-```
-
-`POSTGRES_PORT` and `APP_PORT` override the published host ports (5432 and
-8080) when those are taken.
+`POSTGRES_PORT` and `APP_PORT` override the published host ports
+(`127.0.0.1:6432` and `8080`).
 
 ## Docs
 

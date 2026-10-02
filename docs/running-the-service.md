@@ -4,18 +4,25 @@ How to run the backend locally, and how to put it on a real server. The
 backend lives in this repo; the React frontend is a **separate repo**
 (`family-finance-crm-front`) and is covered at the end.
 
-Everything here assumes Docker. There is no other supported way to run it:
-the image builds the jar itself, so the host needs no JDK and no Gradle.
+Everything here assumes Docker. The jar is built **on the host** and the image
+only packages it: `./gradlew bootJar` first, then compose. Building inside the
+image meant downloading the Gradle distribution from GitHub on every cold
+build, which the production host cannot reliably reach.
 
 ---
 
 ## What you need
 
-- **Docker** with Compose v2 (`docker compose version`). Nothing else —
-  no Java, no Gradle, no Postgres client, though `psql` is handy.
+- **Docker** with Compose v2 (`docker compose version`).
+- **JDK 21** on the host, for `./gradlew bootJar`. The wrapper fetches Gradle
+  itself the first time; after that it is cached under `~/.gradle`. No Postgres
+  client is needed, though `psql` is handy.
 - About 1 GB of RAM for the JVM and 300 MB for Postgres, comfortably.
-- The first build downloads the Gradle distribution and the dependencies, so
-  it takes a few minutes and needs network. Later builds reuse a cache mount.
+
+**Always rebuild the jar before `--build`.** The image copies whatever
+`build/libs/app.jar` holds, so `docker compose ... up -d --build` alone
+repackages the old jar and runs stale code without complaint. On Windows,
+`gradlew.bat bootJar` from PowerShell or `./gradlew bootJar` from Git Bash.
 
 ---
 
@@ -25,18 +32,18 @@ From the repo root:
 
 ```bash
 # 1. Secrets and ports live in .env, which is gitignored. Create it once.
-cat > .env <<'EOF'
-JWT_SECRET=replace-me-with-32-bytes-or-more
-POSTGRES_PORT=5432
-APP_PORT=8080
+#    Both secrets are required; compose refuses to start without them.
+cat > .env <<EOF
+JWT_SECRET=$(openssl rand -hex 32)
+DB_PASSWORD=$(openssl rand -hex 16)
 EOF
 
-# Generate a real secret rather than typing one:
-#   openssl rand -hex 32
-# Keep it stable. Changing it invalidates every issued token, so everyone
-# logs in again.
+# Keep JWT_SECRET stable. Changing it invalidates every issued token, so
+# everyone logs in again. DB_PASSWORD only takes effect when the data volume
+# is first created — see "Write a real .env" below.
 
-# 2. Start Postgres and the app together.
+# 2. Build the jar, then start Postgres and the app together.
+./gradlew bootJar
 docker compose --profile app up -d --build
 ```
 
@@ -52,38 +59,33 @@ is what you want when running the app from an IDE or `./gradlew bootRun`.
 
 `POSTGRES_PORT` and `APP_PORT` in `.env` change only what is published on the
 host; the containers always talk to each other on 5432 and 8080 internally.
-On a machine already running another Postgres, `POSTGRES_PORT=55432` is the
-usual fix.
+Postgres defaults to `127.0.0.1:6432` — loopback only, and off 5432 so it does
+not collide with another local Postgres. Point a DB viewer (DBeaver, IntelliJ)
+at `localhost:6432`, user `family_finance`, with the `DB_PASSWORD` from `.env`.
 
 ### Create the first user
 
 There is deliberately **no signup endpoint** — at the point the first user is
-created there is nobody to authorize the call. Do it once, by hand:
+created there is nobody to authorize the call. Instead the app creates the
+`OWNER` itself, on a start that finds none, from three variables in `.env`:
 
 ```bash
-# 1. Hash a password. Needs a JDK locally; if you have none, see below.
-./gradlew printPasswordHash -Ppassword='your-password'
-
-# 2. Put the hash, your email and your name into db/bootstrap-owner.sql,
-#    then run it inside the database container:
-docker exec -i family-finance-postgres \
-  psql -U family_finance -d family_finance < db/bootstrap-owner.sql
+OWNER_EMAIL=you@example.com
+OWNER_DISPLAY_NAME='Your Name'
+OWNER_PASSWORD='8-to-128-characters'   # single quotes keep a $ literal
 ```
 
-No JDK on the host? Generate the BCrypt hash with `htpasswd` from a small
-image instead — verified against this app, which accepts the `$2a$` form:
+Then (re)start the app: `docker compose --profile app up -d`. The log says
+`Created the OWNER ...`. The rules are the API's own — a valid email, a
+password of 8–128 characters — and a bad or partial value **stops the app
+from starting** with a message naming the problem, rather than leaving it
+running with nobody able to log in. With none of the three set and no `OWNER`
+yet, it starts and logs a warning instead.
 
-```bash
-docker run --rm httpd:alpine htpasswd -bnBC 10 "" 'your-password' \
-  | tr -d ':\n' | sed 's/^\$2y/\$2a/'
-```
-
-(`htpasswd` emits `$2y$`; Spring's encoder accepts it, but rewriting the
-prefix to `$2a$` keeps every hash in the table looking the same.)
-
-Running the Gradle task inside a JDK image also works, but with no Gradle
-cache in the container it downloads the distribution and every dependency
-first — several minutes for one hash, so prefer the command above.
+Once the `OWNER` exists the variables are ignored for good, so they cannot
+reset a password or create a second `OWNER`. Change the password through
+`POST /api/v1/users/me/password`, then delete `OWNER_PASSWORD` from `.env`;
+the app logs a reminder on every start until you do.
 
 Then log in and keep the token:
 
@@ -101,7 +103,7 @@ owner-only and can only create a `MEMBER`.
 ```bash
 docker compose --profile app ps              # what is running
 docker compose --profile app logs -f app     # follow the app log
-docker compose --profile app up -d --build   # rebuild after code changes
+./gradlew bootJar && docker compose --profile app up -d --build   # after code changes
 docker compose --profile app restart app     # restart without rebuilding
 docker compose --profile app down            # stop; the data volume survives
 ```
@@ -130,40 +132,25 @@ umask 077                                   # .env is readable only by you
 cat > .env <<EOF
 JWT_SECRET=$(openssl rand -hex 32)
 DB_PASSWORD=$(openssl rand -hex 16)
-POSTGRES_PORT=5432
 APP_PORT=8080
 EOF
 ```
 
-**Change the database password from the default.** `compose.yaml` ships with
-`family_finance` as the user, password and database name, which is fine on a
-laptop and not fine on a server. Point both services at the new one by editing
-`compose.yaml`:
+On Windows, run this from Git Bash, which ships `openssl`; `umask` has no
+effect there, so `.env` is protected by your user profile's permissions.
 
-```yaml
-  postgres:
-    environment:
-      POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD}
-  app:
-    environment:
-      DB_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD}
-```
+Both services read `DB_PASSWORD` from `.env`, and compose refuses to start
+without it. Set it **before the first start**: `POSTGRES_PASSWORD` only takes
+effect when the data volume is created. Changing it later means an
+`ALTER USER` inside the running container, not an edit here.
 
-Do this **before the first start**: `POSTGRES_PASSWORD` only takes effect when
-the data volume is created. Changing it later means an `ALTER USER` inside the
-running container, not an edit here.
+### 3. Keep Postgres off the network
 
-### 3. Do not publish Postgres
-
-On a server, delete the `ports:` block from the `postgres` service. The app
-reaches it over the compose network; nothing outside the host needs to. If you
-want `psql` access, go through `docker exec` or an SSH tunnel.
-
-```yaml
-  postgres:
-    # ports:            <- remove on a server
-    #   - "5432:5432"
-```
+Postgres is published on `127.0.0.1:6432` only: a DB viewer on the server
+itself can connect, nothing else on the network can. The app reaches it over
+the compose network. From another machine, go through an SSH tunnel rather
+than widening `POSTGRES_PORT` — Docker Desktop on Windows publishes a bare
+port on every interface, and its firewall rule usually lets the LAN in.
 
 ### 4. Put TLS in front of it
 
@@ -193,6 +180,7 @@ point CORS must become a real allowlist.
 ### 5. Start it, and keep it started
 
 ```bash
+./gradlew build                     # lint + tests, and writes build/libs/app.jar
 docker compose --profile app up -d --build
 ```
 
@@ -227,6 +215,7 @@ Test a restore once. An untested backup is a guess.
 
 ```bash
 git pull
+./gradlew build
 docker compose --profile app up -d --build
 ```
 
@@ -293,9 +282,15 @@ deleting migration rows.
 changed. A new secret invalidates every token ever issued; logging in again is
 the fix. Also expected after any password change, by design.
 
-**Login returns 401 with the right password.** Confirm the bootstrap row
-actually landed: `docker exec family-finance-postgres psql -U family_finance
--d family_finance -c 'select email, role from users;'`
+**Login returns 401 with the right password.** Confirm the `OWNER` was
+actually created — look for `Created the OWNER` or `No OWNER exists` in the
+app log, or `docker exec family-finance-postgres psql -U family_finance
+-d family_finance -c 'select email, role from users;'`. If the password in
+`.env` contains a `$` and is not single-quoted, compose expanded it as a
+variable and the password stored is not the one you typed.
+
+**The app exits with `Bootstrap owner ... is invalid`.** One of the `OWNER_*`
+variables is missing or breaks the API's rules; the message says which.
 
 **Port already in use.** Change `POSTGRES_PORT` or `APP_PORT` in `.env`; they
 affect only what is published on the host.

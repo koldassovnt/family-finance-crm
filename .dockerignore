@@ -1,8 +1,3 @@
-.git
-.gradle
-.idea
-.kotlin
-.claude
-build
-db
-*.md
+# The image only packages the host-built jar; send nothing else.
+*
+!build/libs/app.jar

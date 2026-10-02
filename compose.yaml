@@ -8,9 +8,13 @@ services:
     environment:
       POSTGRES_DB: family_finance
       POSTGRES_USER: family_finance
-      POSTGRES_PASSWORD: family_finance
+      # Read only when the data volume is first created; changing it later
+      # needs an ALTER USER inside the container.
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      # Loopback only, so a DB viewer on this machine can connect but the
+      # network cannot. The app reaches it over the compose network.
+      - "${POSTGRES_PORT:-127.0.0.1:6432}:5432"
     volumes:
       - family-finance-pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -30,9 +34,13 @@ services:
     environment:
       DB_URL: jdbc:postgresql://postgres:5432/family_finance
       DB_USERNAME: family_finance
-      DB_PASSWORD: family_finance
+      DB_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
       # Required; the app refuses to start without at least 32 bytes.
       JWT_SECRET: ${JWT_SECRET:-}
+      # Creates the OWNER on a start that finds none; ignored once one exists.
+      OWNER_EMAIL: ${OWNER_EMAIL:-}
+      OWNER_DISPLAY_NAME: ${OWNER_DISPLAY_NAME:-}
+      OWNER_PASSWORD: ${OWNER_PASSWORD:-}
     ports:
       - "${APP_PORT:-8080}:8080"
     restart: unless-stopped

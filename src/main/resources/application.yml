@@ -2,7 +2,7 @@ spring:
   application:
     name: family-finance-crm
   datasource:
-    url: ${DB_URL:jdbc:postgresql://localhost:5432/family_finance}
+    url: ${DB_URL:jdbc:postgresql://localhost:6432/family_finance}
     username: ${DB_USERNAME:family_finance}
     password: ${DB_PASSWORD:family_finance}
     hikari:
@@ -33,6 +33,10 @@ app:
   jwt:
     secret: ${JWT_SECRET:}
     expiry-days: 30
+  bootstrap-owner:
+    email: ${OWNER_EMAIL:}
+    display-name: ${OWNER_DISPLAY_NAME:}
+    password: ${OWNER_PASSWORD:}
 
 springdoc:
   swagger-ui:

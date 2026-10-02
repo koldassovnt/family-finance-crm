@@ -57,13 +57,8 @@ tasks.test {
     useJUnitPlatform()
 }
 
-// Prints a BCrypt hash for the one-off OWNER bootstrap insert (see
-// db/bootstrap-owner.sql). Uses the test runtime classpath so the helper
-// never ships in the application jar.
-tasks.register<JavaExec>("printPasswordHash") {
-    group = "application"
-    description = "Prints a BCrypt hash: ./gradlew printPasswordHash -Ppassword='...'"
-    classpath = sourceSets["test"].runtimeClasspath
-    mainClass.set("com.familyfinance.crm.tools.PasswordHashPrinterKt")
-    args = listOfNotNull(project.findProperty("password") as String?)
+// A fixed name, so the Dockerfile copies exactly this file rather than
+// guessing between it and the `-plain` jar `build` also writes.
+tasks.bootJar {
+    archiveFileName.set("app.jar")
 }

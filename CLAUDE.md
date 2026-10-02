@@ -92,6 +92,7 @@ src/test/kotlin/...
 - ktlint wired into the Gradle build (`ktlintCheck` runs as part of `check`);
   `./gradlew ktlintFormat` fixes most violations.
 - CI gate: build + lint + tests must all pass before merge; no exceptions for "just this once."
-- Deployment: the `Dockerfile` builds the jar inside the image;
+- Deployment: the jar is built on the host (`./gradlew bootJar`, fixed name
+  `build/libs/app.jar`) and the `Dockerfile` only packages it;
   `docker compose --profile app up -d --build` runs it next to Postgres.
   Plain `docker compose up -d` starts Postgres alone for local development.

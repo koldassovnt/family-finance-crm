@@ -9,9 +9,13 @@ Phase 0/1 code actually existed when the build started. See
 ## User Provisioning & Auth
 
 - **Bootstrapping the first `OWNER`:** no endpoint for this — there's no one
-  to authorize it yet. Insert the first `User` (role `OWNER`) directly via
-  SQL/migration at deploy time, same as any other one-time setup on a
-  personal deployment.
+  to authorize it yet. The app creates it at startup from deploy-time config
+  (`OWNER_EMAIL`, `OWNER_DISPLAY_NAME`, `OWNER_PASSWORD`), only when no
+  `OWNER` exists; once one does, the config is ignored, so it can never reset
+  a password or add a second `OWNER`. Same validation as `POST /api/v1/users`;
+  invalid or partial config fails startup. (Changed 2026-10-02 from a
+  hand-run SQL insert with a separately hashed password — too many manual
+  steps for a one-time setup.)
 - **Every subsequent user is created by an `OWNER`**, not self-service
   signup. `POST /api/v1/users` (`OWNER`-only) creates a `MEMBER`.
   **Confirmed: this endpoint cannot create another `OWNER`** — reject
@@ -147,8 +151,8 @@ The original sequencing follows.
    filter validating the bearer token on every other request. Secret from an
    env var; no refresh token, no server-side token store. Add `POST /api/v1/users`
    (`OWNER`-only via `hasRole("OWNER")`) creating a `MEMBER`. The
-   first `OWNER` still isn't created through any endpoint — insert it
-   manually via SQL once, same as always.
+   first `OWNER` still isn't created through any endpoint — it is seeded at
+   startup from `OWNER_*` config (see "Bootstrapping the first `OWNER`").
 
 9. **Swagger/OpenAPI, last.** Add `springdoc-openapi`, annotate every
    controller from every step above. Doing this last avoids re-annotating

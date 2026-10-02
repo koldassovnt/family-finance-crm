@@ -14,7 +14,25 @@ data class AppProperties(
     val timezone: ZoneId,
     @field:Valid
     val jwt: JwtProperties,
+    val bootstrapOwner: BootstrapOwnerProperties = BootstrapOwnerProperties(),
 ) {
+    /**
+     * Seeds the single `OWNER` on a start that finds none — the bootstrap step
+     * `00-` refers to. Supplied via OWNER_EMAIL, OWNER_DISPLAY_NAME and
+     * OWNER_PASSWORD; blank means unset, since compose passes unset variables
+     * as empty strings. Ignored entirely once an `OWNER` exists.
+     */
+    data class BootstrapOwnerProperties(
+        val email: String = "",
+        val displayName: String = "",
+        val password: String = "",
+    ) {
+        val isConfigured: Boolean get() = listOf(email, displayName, password).any { it.isNotBlank() }
+
+        /** Never let the password reach a log line or a bind-failure report. */
+        override fun toString() = "BootstrapOwnerProperties(email=$email, displayName=$displayName, password=***)"
+    }
+
     data class JwtProperties(
         /** Signing secret; supplied via the JWT_SECRET environment variable. */
         @field:NotBlank(message = "must be set (env JWT_SECRET)")

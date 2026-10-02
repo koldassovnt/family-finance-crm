@@ -136,16 +136,38 @@ closing only drops it from the transaction form's picker.
 
 ## Infrastructure
 
-**The Dockerfile builds the jar inside the image.** The host needs only
-Docker — no JDK, no Gradle. Lint and tests are not run in the image;
-`./gradlew build` is the gate for those.
+**The jar is built on the host; the Dockerfile only packages it**
+(2026-10-02). It used to build inside the image, but every cold build then
+downloaded the Gradle distribution from GitHub, which the production host —
+this Windows machine — could not reach. The host already has JDK 21 and a
+warm Gradle cache. The cost: `./gradlew bootJar` must run before
+`docker compose ... --build`, or the image repackages a stale jar. The boot
+jar is named `app.jar` so the Dockerfile never has to choose between it and
+the `-plain` jar.
 
 **The app service sits behind a compose profile.** `docker compose up -d`
 stays a Postgres-only command for local `bootRun`, while
 `--profile app` runs the whole stack.
 
-**`.env` is gitignored and holds `JWT_SECRET` plus port overrides.** Host 5432
-is taken on this machine by another project, hence `POSTGRES_PORT=55432`.
+**`.env` is gitignored and holds `JWT_SECRET`, `DB_PASSWORD` and port
+overrides.** Both secrets are required by `compose.yaml` (`${...:?}`), so a
+server cannot come up on the old `family_finance` default password by
+accident. Postgres publishes on `127.0.0.1:6432` by default (2026-10-02, when
+this Windows machine became the production host): loopback so a local DB
+viewer works while the LAN does not — Docker Desktop publishes bare ports on
+every interface — and off 5432, which another project holds here.
+
+**The `OWNER` is created at startup from `OWNER_*` env vars** (2026-10-02),
+replacing `db/bootstrap-owner.sql` and the `printPasswordHash` task. The SQL
+route needed a hash generated out of band and a hand-run insert; the env route
+is the usual self-hosted pattern (Grafana, Keycloak) and still adds no
+endpoint. Guarded by "no `OWNER` exists", so leftover variables are inert; the
+app warns while `OWNER_PASSWORD` is still set. Validation reuses
+`CreateUserRequest`'s constraints so the two paths cannot drift.
+
+**`.gitattributes` pins `gradlew` to LF.** With `core.autocrlf=true` on Windows
+it was checked out with CRLF, and the Docker build's `./gradlew` failed with
+`not found`.
 
 **The whole `.idea/` directory is ignored.** It was partly tracked, including
 `dataSources.xml`, which IntelliJ had staged and which records local database

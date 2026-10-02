@@ -1,0 +1,5 @@
+# The Docker build runs gradlew inside Linux, where a CRLF shebang is
+# "not found". Pin shell scripts to LF regardless of core.autocrlf.
+gradlew text eol=lf
+*.sh text eol=lf
+*.jar binary
