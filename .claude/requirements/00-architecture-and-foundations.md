@@ -221,6 +221,29 @@ Implications, so nothing gets missed when this is built:
   - **Restore** is documented in `docs/running-the-service.md` and **tested
     once** after setup and after every Postgres major-version upgrade, into a
     throwaway database, never over the live one. An untested backup is a guess.
+- **Versioned images — planned, not built** (requested 2026-10-03). Every
+  service in `compose.yaml` names its image with an explicit version tag, so
+  the running version is visible and a bad upgrade can be rolled back. Today
+  the app is built as `family-finance-crm-app:latest`, overwritten by every
+  rebuild, and Postgres floats on `postgres:17-alpine`.
+  - **The app image** is `family-finance-app:<version>`, where `<version>` is
+    the `version` in `build.gradle.kts` — one source of truth, so the jar and
+    the image cannot disagree. Compose keeps `build: .` next to `image:`, so
+    `up --build` builds and tags in one step. Never `latest`.
+  - **Every deploy bumps the version** and drops `-SNAPSHOT` for what runs in
+    production. Rebuilding an existing version overwrites that tag, and with
+    it the rollback target.
+  - **Rollback:** the previous **3** app images stay on the host; going back is
+    pointing compose at the older tag and `up -d`, no rebuild. Older images
+    are pruned. A rollback across a Flyway migration needs the pre-upgrade
+    dump as well (see Backups) — the old code refuses a newer schema.
+  - **Third-party images are pinned to an exact version** —
+    `postgres:17.10-alpine` (what runs today) for both `postgres` and
+    `backup`, which must stay identical so `pg_dump` matches the server.
+    Upgrading Postgres becomes a deliberate edit, not a side effect of a pull;
+    a major-version upgrade needs a dump/restore and a restore test.
+  - The **frontend** image (its own repo and compose) follows the same rule.
+  - `docs/running-the-service.md` gets the upgrade and rollback steps.
 - **Testing:** unit tests are enough for now. Broader integration/end-to-end
   testing is deferred until the React frontend and Telegram bot exist to
   test against.
