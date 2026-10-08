@@ -3,6 +3,19 @@
 Status: spec'd, not built. Depends on Phase 0/1 (accounts) and Phase 5
 (holdings).
 
+**Re-review before building (noted 2026-10-08).** Phase 5 was built differently
+from the draft this document assumed: there are no instruments, no price
+snapshots and no exchange-rate table, so a holding has a **cost** (in its
+account's currency and in KZT) but no current value. Everything below that
+says "latest snapshot prices" has nothing to read yet. Either the investment
+total is reported at cost and labelled as such, or this phase waits for the
+price and rate sources Phase 5 defers. The same gap applies to a non-KZT cash
+account, which has no current rate either.
+
+**Decided by the owner, 2026-10-08: this phase waits** until they have chosen
+open APIs for exchange rates and for crypto and stock prices — see
+`docs/todo.md`. Do not build it at cost in the meantime.
+
 ## The key constraint: balances have no history
 
 `Account.balance` is a single current figure — there's no record of what it

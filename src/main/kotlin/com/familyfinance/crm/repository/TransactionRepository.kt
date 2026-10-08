@@ -259,6 +259,31 @@ interface TransactionRepository : JpaRepository<Transaction, UUID> {
         to: LocalDate,
     ): List<CategoryTotal>
 
+    /**
+     * Every trade on one account, oldest first — the order a holding has to be
+     * replayed in, since a sale reduces whatever had been bought by then.
+     */
+    @Query(
+        """
+        SELECT t FROM Transaction t
+        JOIN FETCH t.account
+        WHERE t.account = :account AND t.tradeSide IS NOT NULL
+        ORDER BY t.occurredOn, t.createdAt
+        """,
+    )
+    fun findTradesByAccount(account: Account): List<Transaction>
+
+    /** The same, across every live account the owner has. */
+    @Query(
+        """
+        SELECT t FROM Transaction t
+        JOIN FETCH t.account a
+        WHERE a.owner = :owner AND a.isDeleted = false AND t.tradeSide IS NOT NULL
+        ORDER BY t.occurredOn, t.createdAt
+        """,
+    )
+    fun findTradesByOwner(owner: User): List<Transaction>
+
     @Query(
         """
         SELECT count(t) > 0 FROM Transaction t

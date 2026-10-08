@@ -4,6 +4,7 @@ import com.familyfinance.crm.domain.Account
 import com.familyfinance.crm.domain.BASE_CURRENCY
 import com.familyfinance.crm.domain.Category
 import com.familyfinance.crm.domain.CategoryKind
+import com.familyfinance.crm.domain.TradeSide
 import com.familyfinance.crm.domain.Transaction
 import com.familyfinance.crm.domain.TransactionType
 import com.familyfinance.crm.domain.User
@@ -12,6 +13,7 @@ import com.familyfinance.crm.dto.MonthlySummaryResponse
 import com.familyfinance.crm.dto.ReconcileRequest
 import com.familyfinance.crm.dto.UpdateTransactionRequest
 import com.familyfinance.crm.dto.toSummary
+import com.familyfinance.crm.exception.ConflictException
 import com.familyfinance.crm.exception.CurrencyMismatchException
 import com.familyfinance.crm.exception.NotFoundException
 import com.familyfinance.crm.exception.invalidField
@@ -46,7 +48,8 @@ class TransactionServiceImpl(
             )
         }
         val accountId = request.accountId ?: throw invalidField("accountId", "is required")
-        val amount = requirePositive(request.amount, "amount")
+        // A trade's amount is derived from its quantity and price, never supplied.
+        val amount = if (type == TransactionType.TRADE) null else requirePositive(request.amount, "amount")
         val account = accountService.getOwnedBy(accountId, owner)
         val occurredOn = resolveOccurredOn(request.occurredOn)
         val rate = resolveExchangeRate(request.exchangeRate, account)
@@ -56,7 +59,7 @@ class TransactionServiceImpl(
                 TransactionType.INCOME, TransactionType.EXPENSE -> {
                     buildSimple(
                         type = type,
-                        amount = amount,
+                        amount = checkNotNull(amount),
                         rate = rate,
                         account = account,
                         occurredOn = occurredOn,
@@ -67,13 +70,17 @@ class TransactionServiceImpl(
 
                 TransactionType.TRANSFER -> {
                     buildTransfer(
-                        amount = amount,
+                        amount = checkNotNull(amount),
                         rate = rate,
                         account = account,
                         occurredOn = occurredOn,
                         request = request,
                         owner = owner,
                     )
+                }
+
+                TransactionType.TRADE -> {
+                    buildTrade(rate = rate, account = account, occurredOn = occurredOn, request = request)
                 }
 
                 TransactionType.ADJUSTMENT -> {
@@ -95,11 +102,19 @@ class TransactionServiceImpl(
         val transaction = getOwned(id, owner)
 
         val newAmount =
-            request.amount?.let { amount ->
-                if (transaction.type == TransactionType.ADJUSTMENT) {
-                    requireNonZeroAmount(amount)
-                } else {
-                    requirePositive(amount, "amount")
+            when (transaction.type) {
+                TransactionType.TRADE -> {
+                    resolveTradePatch(request, transaction)
+                }
+
+                TransactionType.ADJUSTMENT -> {
+                    rejectTradeFields(request.ticker, request.quantity, request.unitPrice)
+                    request.amount?.let(::requireNonZeroAmount)
+                }
+
+                TransactionType.INCOME, TransactionType.EXPENSE, TransactionType.TRANSFER -> {
+                    rejectTradeFields(request.ticker, request.quantity, request.unitPrice)
+                    request.amount?.let { requirePositive(it, "amount") }
                 }
             }
         val newToAmount = resolveToAmountPatch(request, transaction)
@@ -115,7 +130,7 @@ class TransactionServiceImpl(
         request.exchangeRate?.let { newRate ->
             transaction.exchangeRate = validateExchangeRate(newRate, transaction.currency)
         }
-        if (request.amount != null || request.exchangeRate != null) {
+        if (newAmount != null || request.exchangeRate != null) {
             transaction.amountKzt = toKzt(transaction.amount, transaction.exchangeRate)
         }
 
@@ -132,6 +147,7 @@ class TransactionServiceImpl(
             transaction.topic = newTopic?.let { topicService.getOwnedBy(it, owner) }
         }
         request.note?.let { transaction.note = it.orElse(null)?.let({ requireMaxLength(it, "note") }) }
+        if (request.ticker != null || request.quantity != null) requireNothingOversold(transaction.account)
         return transaction
     }
 
@@ -144,6 +160,7 @@ class TransactionServiceImpl(
         // A hidden transaction must not leave a balance that assumes it happened.
         transaction.applyToBalances(REVERSE)
         transaction.isDeleted = true
+        if (transaction.type == TransactionType.TRADE) requireNothingOversold(transaction.account)
     }
 
     @Transactional(readOnly = true)
@@ -263,6 +280,7 @@ class TransactionServiceImpl(
         if (request.toAmount != null) {
             throw invalidField("toAmount", "is only valid for a cross-currency TRANSFER")
         }
+        rejectTradeFields(request.ticker, request.quantity, request.unitPrice, request.tradeSide)
         return Transaction(
             type = type,
             amount = amount,
@@ -298,6 +316,7 @@ class TransactionServiceImpl(
             // Attaching one would count the withdrawal and what it paid for.
             throw invalidField("topicId", "is not valid for a TRANSFER")
         }
+        rejectTradeFields(request.ticker, request.quantity, request.unitPrice, request.tradeSide)
         val toAccount = accountService.getOwnedBy(toAccountId, owner)
         val toAmount = resolveToAmount(request.toAmount, account, toAccount)
         return Transaction(
@@ -313,6 +332,107 @@ class TransactionServiceImpl(
             toAccount = toAccount,
             category = null,
             note = request.note?.let({ requireMaxLength(it, "note") }),
+        )
+    }
+
+    /**
+     * A trade is a ledger row like any other, so buying debits the account
+     * through the same apply/reverse path. Only the fields that describe the
+     * asset are its own; everything a category or a topic would say about it
+     * is rejected, because a trade is not spending.
+     */
+    private fun buildTrade(
+        rate: BigDecimal,
+        account: Account,
+        occurredOn: LocalDate,
+        request: CreateTransactionRequest,
+    ): Transaction {
+        if (!account.type.holdsAssets) {
+            throw invalidField("accountId", "must be a BROKER or CRYPTO account for a TRADE")
+        }
+        rejectOnTrade("amount", request.amount, "is derived from quantity × unitPrice for a TRADE")
+        rejectOnTrade("toAccountId", request.toAccountId)
+        rejectOnTrade("toAmount", request.toAmount)
+        rejectOnTrade("categoryId", request.categoryId)
+        rejectOnTrade("topicId", request.topicId)
+        val side = request.tradeSide ?: throw invalidField("tradeSide", "is required for a TRADE")
+        val ticker = normalizeTicker(request.ticker ?: throw invalidField("ticker", "is required for a TRADE"))
+        val quantity = requireTradeFigure(request.quantity, "quantity")
+        val unitPrice = requireTradeFigure(request.unitPrice, "unitPrice")
+        if (side == TradeSide.SELL) requireHeld(account, ticker, quantity)
+        val amount = tradeAmount(quantity, unitPrice)
+        return Transaction(
+            type = TransactionType.TRADE,
+            amount = amount,
+            currency = account.currency,
+            exchangeRate = rate,
+            amountKzt = toKzt(amount, rate),
+            toAmount = null,
+            occurredOn = occurredOn,
+            account = account,
+            toAccount = null,
+            category = null,
+            note = request.note?.let({ requireMaxLength(it, "note") }),
+            tradeSide = side,
+            ticker = ticker,
+            quantity = quantity,
+            unitPrice = unitPrice,
+        )
+    }
+
+    /** Selling more than the account holds would leave a negative position. */
+    private fun requireHeld(
+        account: Account,
+        ticker: String,
+        quantity: BigDecimal,
+    ) {
+        val held =
+            holdingsOf(transactionRepository.findTradesByAccount(account))
+                .firstOrNull { it.ticker == ticker }
+                ?.quantity ?: BigDecimal.ZERO
+        if (quantity > held) {
+            throw invalidField(
+                "quantity",
+                "exceeds the ${held.stripTrailingZeros().toPlainString()} $ticker held in this account",
+            )
+        }
+    }
+
+    /**
+     * Correcting or deleting a purchase must not strand a sale that depended
+     * on it: the sale's cash would stay in the balance with nothing sold.
+     */
+    private fun requireNothingOversold(account: Account) {
+        val oversold =
+            positionsOf(transactionRepository.findTradesByAccount(account))
+                .firstOrNull { it.quantity.signum() < 0 }
+        if (oversold != null) {
+            throw ConflictException(
+                "This would leave more ${oversold.ticker} sold than bought in this account; " +
+                    "correct or delete the sale first",
+            )
+        }
+    }
+
+    /**
+     * Applies a trade's own corrections and returns its re-derived amount, or
+     * null when neither figure behind it changed. The caller moves the balance.
+     */
+    private fun resolveTradePatch(
+        request: UpdateTransactionRequest,
+        trade: Transaction,
+    ): BigDecimal? {
+        rejectOnTrade("amount", request.amount, "is derived from quantity × unitPrice for a TRADE")
+        rejectOnTrade("toAmount", request.toAmount)
+        request.ticker?.let { trade.ticker = normalizeTicker(it) }
+        if (request.quantity == null && request.unitPrice == null) return null
+        val quantity = request.quantity?.let { requireTradeFigure(it, "quantity") } ?: trade.quantity
+        val unitPrice = request.unitPrice?.let { requireTradeFigure(it, "unitPrice") } ?: trade.unitPrice
+        trade.quantity = quantity
+        trade.unitPrice = unitPrice
+        return tradeAmount(
+            quantity = checkNotNull(quantity) { "A TRADE always has a quantity" },
+            unitPrice = checkNotNull(unitPrice) { "A TRADE always has a unit price" },
         )
     }
 
@@ -445,7 +565,7 @@ class TransactionServiceImpl(
     }
 }
 
-private const val MONEY_SCALE = 4
+private const val MAX_TICKER_LENGTH = 32
 private const val APPLY = 1
 private const val REVERSE = -1
 
@@ -473,7 +593,69 @@ private fun Transaction.applyToBalances(direction: Int) {
             // Cross-currency transfers credit the destination its own amount.
             destination.balance += (toAmount ?: amount).multiply(BigDecimal(direction))
         }
+
+        TransactionType.TRADE -> {
+            when (checkNotNull(tradeSide) { "A TRADE always has a side" }) {
+                TradeSide.BUY -> account.balance -= signed
+
+                TradeSide.SELL -> account.balance += signed
+
+                // Already held when tracking began, so no cash moves for it.
+                TradeSide.OPENING -> Unit
+            }
+        }
     }
+}
+
+/** What a trade moves, in the account's currency. */
+private fun tradeAmount(
+    quantity: BigDecimal,
+    unitPrice: BigDecimal,
+): BigDecimal {
+    val amount = quantity.multiply(unitPrice).setScale(MONEY_SCALE, RoundingMode.HALF_UP)
+    if (amount.signum() == 0) throw invalidField("quantity", "is too small: the trade's total rounds to zero")
+    return amount
+}
+
+/** Positive, and no finer than the column can hold — a silently rounded quantity would misstate a holding. */
+private fun requireTradeFigure(
+    value: BigDecimal?,
+    field: String,
+): BigDecimal {
+    val figure = requirePositive(value, field)
+    if (figure.stripTrailingZeros().scale() > PRICE_SCALE) {
+        throw invalidField(field, "must have at most $PRICE_SCALE decimal places")
+    }
+    return figure
+}
+
+private fun normalizeTicker(ticker: String): String {
+    val normalized = requireNonBlankName(ticker, "ticker").uppercase()
+    if (normalized.length > MAX_TICKER_LENGTH) {
+        throw invalidField("ticker", "must be at most $MAX_TICKER_LENGTH characters")
+    }
+    return normalized
+}
+
+private fun rejectOnTrade(
+    field: String,
+    value: Any?,
+    message: String = "is not valid for a TRADE",
+) {
+    if (value != null) throw invalidField(field, message)
+}
+
+/** The fields that describe an asset belong to a `TRADE` and to nothing else. */
+private fun rejectTradeFields(
+    ticker: String?,
+    quantity: BigDecimal?,
+    unitPrice: BigDecimal?,
+    tradeSide: TradeSide? = null,
+) {
+    val present =
+        listOf("tradeSide" to tradeSide, "ticker" to ticker, "quantity" to quantity, "unitPrice" to unitPrice)
+            .firstOrNull { it.second != null }
+    if (present != null) throw invalidField(present.first, "is only valid for a TRADE")
 }
 
 private fun toKzt(

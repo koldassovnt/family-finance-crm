@@ -3,12 +3,15 @@ package com.familyfinance.crm.web
 import com.familyfinance.crm.domain.ShareScope
 import com.familyfinance.crm.dto.AccountResponse
 import com.familyfinance.crm.dto.CreateAccountRequest
+import com.familyfinance.crm.dto.InvestmentsResponse
 import com.familyfinance.crm.dto.ReconcileRequest
 import com.familyfinance.crm.dto.TransactionResponse
 import com.familyfinance.crm.dto.UpdateAccountRequest
+import com.familyfinance.crm.dto.toInvestmentsResponse
 import com.familyfinance.crm.dto.toResponse
 import com.familyfinance.crm.exception.ErrorResponse
 import com.familyfinance.crm.service.AccountService
+import com.familyfinance.crm.service.InvestmentService
 import com.familyfinance.crm.service.TransactionService
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.media.Content
@@ -39,6 +42,7 @@ class AccountController(
     // Account history and reconciliation are ledger operations that happen to
     // hang off an account path, so they delegate to the transaction service.
     private val transactionService: TransactionService,
+    private val investmentService: InvestmentService,
     private val currentUser: CurrentUserProvider,
 ) {
     @GetMapping
@@ -143,4 +147,24 @@ class AccountController(
         transactionService
             .history(accountId = id, reader = currentUser.require(), from = from, to = to)
             .map { it.toResponse() }
+
+    @GetMapping("/{id}/holdings")
+    @Operation(
+        summary = "What one account holds",
+        description =
+            "The same shape as GET /api/v1/investments, narrowed to this account. Readable by a viewer " +
+                "of the account, like its history. Empty for an account that has never recorded a TRADE.",
+    )
+    @ApiResponse(responseCode = "200", description = "The holdings and their totals")
+    @ApiResponse(
+        responseCode = "404",
+        description = "No such account, and not shared with you",
+        content = [Content(schema = Schema(implementation = ErrorResponse::class))],
+    )
+    fun holdings(
+        @PathVariable id: UUID,
+    ): InvestmentsResponse =
+        investmentService
+            .accountHoldings(accountId = id, reader = currentUser.require())
+            .toInvestmentsResponse()
 }

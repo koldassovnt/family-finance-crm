@@ -60,4 +60,21 @@ class Transaction(
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "topic_id")
     var topic: Topic? = null,
+    /**
+     * Set on a `TRADE` only, together with [ticker], [quantity] and
+     * [unitPrice]. A trade's [amount] is always `quantity × unitPrice`, in the
+     * account's currency, so it is derived and never supplied.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(length = 16)
+    var tradeSide: TradeSide? = null,
+    /** Free text, stored uppercase. What kind of asset it is belongs in [note]. */
+    @Column(length = 32)
+    var ticker: String? = null,
+    /** Fractional: a crypto holding is rarely a whole number. */
+    @Column(precision = 28, scale = 10)
+    var quantity: BigDecimal? = null,
+    /** Per unit, in the account's currency. */
+    @Column(precision = 28, scale = 10)
+    var unitPrice: BigDecimal? = null,
 ) : BaseEntity()

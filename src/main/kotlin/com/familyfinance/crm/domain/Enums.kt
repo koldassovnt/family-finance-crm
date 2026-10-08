@@ -2,11 +2,28 @@ package com.familyfinance.crm.domain
 
 enum class UserRole { OWNER, MEMBER }
 
-enum class AccountType { CASH, BANK, DEPOSIT, BROKER }
+enum class AccountType {
+    CASH,
+    BANK,
+    DEPOSIT,
+    BROKER,
+    CRYPTO,
+    ;
+
+    /** Only these may record a `TRADE` — see `phase-5-investments.md`. */
+    val holdsAssets: Boolean get() = this == BROKER || this == CRYPTO
+}
 
 enum class CategoryKind { EXPENSE, INCOME }
 
-enum class TransactionType { INCOME, EXPENSE, TRANSFER, ADJUSTMENT }
+enum class TransactionType { INCOME, EXPENSE, TRANSFER, ADJUSTMENT, TRADE }
+
+/**
+ * `BUY` debits the account and `SELL` credits it. `OPENING` records an asset
+ * already held before tracking began: it counts toward the holding at the price
+ * paid, and moves no cash, because that cash left before the ledger started.
+ */
+enum class TradeSide { BUY, SELL, OPENING }
 
 /** `MONTHLY` only — `YEARLY` waits for an actual need. */
 enum class BudgetPeriod { MONTHLY, }

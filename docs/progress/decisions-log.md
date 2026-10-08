@@ -78,6 +78,33 @@ cost.
 list. Topic membership is itself the bound. The one-year cap elsewhere exists
 because an unbounded ledger query is unbounded; a trip is not.
 
+**A trade is a transaction type, not its own table** (2026-10-08). The owner
+described it as a fourth operation next to expense, income and transfer, and
+that shape is what makes a purchase debit the account for free: `TRADE` goes
+through the same apply/reverse path, so edit and delete correct the balance
+with no second bookkeeping entry. The earlier draft kept trades apart from
+cash precisely to avoid that second entry; making the trade *be* the entry
+removed the reason. The cost is four nullable columns on `transactions`,
+guarded by a `CHECK` that they are all set on a trade and all null otherwise.
+
+**`OPENING` is a trade side, not a flag** (2026-10-08). An asset held before
+tracking began counts toward the holding and moves no cash. A side makes the
+three cases one exhaustive `when` in `applyToBalances`; a boolean next to
+`BUY` would have allowed a cash-free `SELL`, which means nothing.
+
+**There is no instrument table and no price** (2026-10-08). A ticker is free
+text on the trade, and the kind of asset goes in the note — the owner's call,
+to keep entry to four fields. Holdings therefore report cost, never value.
+Do not add a price or rate table speculatively: the owner intends to pick
+external APIs for both, and the shape should follow whatever those return.
+
+**An edit or delete may not leave a ticker oversold** (2026-10-08). Found by
+driving a real instance, not by a unit test: deleting a purchase from under a
+sale returned the purchase's cash and kept the sale's, with no holding left to
+show for either. `requireNothingOversold` turns that into a 409. It relies on
+Hibernate flushing the change before its query runs, which a mocked
+repository cannot show — re-check it against Postgres if it is ever touched.
+
 ## Serialization and formatting
 
 **Money serializes as a JSON number with trailing scale digits**

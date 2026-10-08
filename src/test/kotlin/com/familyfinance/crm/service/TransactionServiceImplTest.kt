@@ -3,13 +3,16 @@ package com.familyfinance.crm.service
 import com.familyfinance.crm.account
 import com.familyfinance.crm.category
 import com.familyfinance.crm.domain.Account
+import com.familyfinance.crm.domain.AccountType
 import com.familyfinance.crm.domain.CategoryKind
 import com.familyfinance.crm.domain.ShareAccess
+import com.familyfinance.crm.domain.TradeSide
 import com.familyfinance.crm.domain.Transaction
 import com.familyfinance.crm.domain.TransactionType
 import com.familyfinance.crm.dto.CreateTransactionRequest
 import com.familyfinance.crm.dto.ReconcileRequest
 import com.familyfinance.crm.dto.UpdateTransactionRequest
+import com.familyfinance.crm.exception.ConflictException
 import com.familyfinance.crm.exception.CurrencyMismatchException
 import com.familyfinance.crm.exception.NotFoundException
 import com.familyfinance.crm.exception.ValidationException
@@ -543,6 +546,207 @@ class TransactionServiceImplTest {
 
         assertEquals(listOf(row), history)
     }
+
+    // Phase 5 — trades. A trade is a ledger row, so it moves cash like one.
+
+    @Test
+    fun `buying debits the broker account by quantity times price`() {
+        val broker = account(owner, balance = "1000", currency = "USD", type = AccountType.BROKER)
+
+        val trade = trade(broker, TradeSide.BUY, quantity = "2.5", unitPrice = "100", exchangeRate = "500")
+
+        assertEquals(BigDecimal("250.0000"), trade.amount)
+        assertEquals(BigDecimal("125000.0000"), trade.amountKzt)
+        assertEquals(BigDecimal("750.0000"), broker.balance)
+    }
+
+    @Test
+    fun `a ticker is stored trimmed and uppercase`() {
+        val broker = account(owner, balance = "1000", type = AccountType.BROKER)
+
+        val trade = trade(broker, TradeSide.BUY, quantity = "1", unitPrice = "10", ticker = " voo ")
+
+        assertEquals("VOO", trade.ticker)
+    }
+
+    @Test
+    fun `an opening position moves no cash`() {
+        val crypto = account(owner, balance = "40", type = AccountType.CRYPTO)
+
+        trade(crypto, TradeSide.OPENING, quantity = "0.05", unitPrice = "30000000", ticker = "BTC")
+
+        assertEquals(BigDecimal("40"), crypto.balance)
+    }
+
+    @Test
+    fun `selling credits the account`() {
+        val broker = account(owner, balance = "0", type = AccountType.BROKER)
+        val bought = trade(broker, TradeSide.OPENING, quantity = "10", unitPrice = "100")
+        every { transactionRepository.findTradesByAccount(broker) } returns listOf(bought)
+
+        trade(broker, TradeSide.SELL, quantity = "4", unitPrice = "150")
+
+        assertEquals(BigDecimal("600.0000"), broker.balance)
+    }
+
+    @Test
+    fun `rejects selling more than the account holds`() {
+        val broker = account(owner, balance = "0", type = AccountType.BROKER)
+        val bought = trade(broker, TradeSide.OPENING, quantity = "10", unitPrice = "100")
+        every { transactionRepository.findTradesByAccount(broker) } returns listOf(bought)
+
+        val error =
+            assertThrows<ValidationException> {
+                trade(broker, TradeSide.SELL, quantity = "11", unitPrice = "150")
+            }
+
+        assertEquals(setOf("quantity"), error.fieldErrors.keys)
+    }
+
+    @Test
+    fun `rejects a trade on an account that cannot hold assets`() {
+        val bank = account(owner, balance = "1000", type = AccountType.BANK)
+
+        val error =
+            assertThrows<ValidationException> {
+                trade(bank, TradeSide.BUY, quantity = "1", unitPrice = "10")
+            }
+
+        assertEquals(setOf("accountId"), error.fieldErrors.keys)
+    }
+
+    @Test
+    fun `rejects an amount on a trade, since it is derived`() {
+        val broker = account(owner, balance = "1000", type = AccountType.BROKER)
+        every { accountService.getOwnedBy(broker.idValue, owner) } returns broker
+
+        val error =
+            assertThrows<ValidationException> {
+                service.create(
+                    owner,
+                    tradeRequest(broker, TradeSide.BUY, quantity = "1", unitPrice = "10").copy(amount = BigDecimal("10")),
+                )
+            }
+
+        assertEquals(setOf("amount"), error.fieldErrors.keys)
+    }
+
+    @Test
+    fun `rejects a quantity finer than ten decimal places`() {
+        val crypto = account(owner, balance = "1000", type = AccountType.CRYPTO)
+
+        val error =
+            assertThrows<ValidationException> {
+                trade(crypto, TradeSide.BUY, quantity = "0.00000000001", unitPrice = "10")
+            }
+
+        assertEquals(setOf("quantity"), error.fieldErrors.keys)
+    }
+
+    @Test
+    fun `rejects trade fields on an expense`() {
+        val account = account(owner, balance = "100")
+        every { accountService.getOwnedBy(account.idValue, owner) } returns account
+
+        val error =
+            assertThrows<ValidationException> {
+                service.create(
+                    owner,
+                    request(TransactionType.EXPENSE, "50", account.idValue).copy(ticker = "VOO"),
+                )
+            }
+
+        assertEquals(setOf("ticker"), error.fieldErrors.keys)
+    }
+
+    @Test
+    fun `correcting a trade's quantity re-applies the balance difference`() {
+        val broker = account(owner, balance = "1000", type = AccountType.BROKER)
+        val trade = trade(broker, TradeSide.BUY, quantity = "2", unitPrice = "100")
+        every { transactionRepository.findTradesByAccount(broker) } returns listOf(trade)
+
+        service.update(trade.idValue, owner, UpdateTransactionRequest(quantity = BigDecimal("3")))
+
+        assertEquals(BigDecimal("300.0000"), trade.amount)
+        assertEquals(BigDecimal("700.0000"), broker.balance)
+    }
+
+    @Test
+    fun `rejects editing a trade's amount directly`() {
+        val broker = account(owner, balance = "1000", type = AccountType.BROKER)
+        val trade = trade(broker, TradeSide.BUY, quantity = "2", unitPrice = "100")
+
+        assertThrows<ValidationException> {
+            service.update(trade.idValue, owner, UpdateTransactionRequest(amount = BigDecimal("300")))
+        }
+    }
+
+    @Test
+    fun `deleting a purchase returns its cash`() {
+        val broker = account(owner, balance = "1000", type = AccountType.BROKER)
+        val trade = trade(broker, TradeSide.BUY, quantity = "2", unitPrice = "100")
+        every { transactionRepository.findTradesByAccount(broker) } returns emptyList()
+
+        service.softDelete(trade.idValue, owner)
+
+        assertEquals(BigDecimal("1000.0000"), broker.balance)
+    }
+
+    @Test
+    fun `rejects deleting a purchase that a later sale depends on`() {
+        val broker = account(owner, balance = "1000", type = AccountType.BROKER)
+        val bought = trade(broker, TradeSide.BUY, quantity = "2", unitPrice = "100")
+        every { transactionRepository.findTradesByAccount(broker) } returns listOf(bought)
+        val sold = trade(broker, TradeSide.SELL, quantity = "2", unitPrice = "120")
+        // What is left once the purchase is gone: a sale of something never bought.
+        every { transactionRepository.findTradesByAccount(broker) } returns listOf(sold)
+
+        assertThrows<ConflictException> { service.softDelete(bought.idValue, owner) }
+    }
+
+    @Test
+    fun `rejects shrinking a purchase below what was later sold`() {
+        val broker = account(owner, balance = "1000", type = AccountType.BROKER)
+        val bought = trade(broker, TradeSide.BUY, quantity = "2", unitPrice = "100")
+        every { transactionRepository.findTradesByAccount(broker) } returns listOf(bought)
+        val sold = trade(broker, TradeSide.SELL, quantity = "2", unitPrice = "120")
+        every { transactionRepository.findTradesByAccount(broker) } returns listOf(bought, sold)
+
+        assertThrows<ConflictException> {
+            service.update(bought.idValue, owner, UpdateTransactionRequest(quantity = BigDecimal("1")))
+        }
+    }
+
+    private fun trade(
+        account: Account,
+        side: TradeSide,
+        quantity: String,
+        unitPrice: String,
+        ticker: String = "VOO",
+        exchangeRate: String? = null,
+    ): Transaction {
+        every { accountService.getOwnedBy(account.idValue, owner) } returns account
+        return service
+            .create(owner, tradeRequest(account, side, quantity, unitPrice, ticker, exchangeRate))
+            .also { every { transactionRepository.findDetailedById(it.idValue) } returns it }
+    }
+
+    private fun tradeRequest(
+        account: Account,
+        side: TradeSide,
+        quantity: String,
+        unitPrice: String,
+        ticker: String = "VOO",
+        exchangeRate: String? = null,
+    ) = CreateTransactionRequest(
+        type = TransactionType.TRADE,
+        accountId = account.idValue,
+        tradeSide = side,
+        ticker = ticker,
+        quantity = BigDecimal(quantity),
+        unitPrice = BigDecimal(unitPrice),
+        exchangeRate = exchangeRate?.let(::BigDecimal),
+    )
 
     private fun transaction(
         type: TransactionType,

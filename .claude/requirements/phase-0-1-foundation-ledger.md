@@ -61,8 +61,8 @@ Phase 0/1 code actually existed when the build started. See
 - **A transaction's category must match its type's kind** — an `EXPENSE`
   transaction needs an `EXPENSE` category, `INCOME` needs `INCOME`. An
   `INCOME` category on an expense is a data error, not a preference.
-- **`TRANSFER` and `ADJUSTMENT` carry no category at all**, and one is rejected
-  if supplied.
+- **`TRANSFER`, `ADJUSTMENT` and `TRADE` carry no category at all**, and one is
+  rejected if supplied.
 - **Soft-deleting a `Category` with live sub-categories is blocked** (409), so
   the tree can't be left with dangling parents. Re-parent or delete the
   children first. (Historical transactions still never block it — see `00-`.)

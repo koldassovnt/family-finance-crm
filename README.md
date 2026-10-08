@@ -1,7 +1,7 @@
 # Family Finance CRM
 
 Kotlin + Spring Boot + PostgreSQL backend for a household ledger: accounts,
-categories and transactions, plus budgets, goals and bills.
+categories and transactions, plus budgets, goals, bills and investments.
 
 ## Running it
 
@@ -53,6 +53,7 @@ is created. Flyway migrates on startup; bootstrap the `OWNER` as above.
 - [`docs/progress/`](docs/progress/) — what is built, the development
   environment and seeded data, and the decisions behind recent choices.
   Start here when picking the project up again.
+- [`docs/todo.md`](docs/todo.md) — what is wanted but waiting, and on what.
 
 ## Requirements
 
@@ -66,10 +67,11 @@ phase doc assumes it. The frontend has its own matching set, in its own repo:
 | `.claude/requirements/phase-0-1-foundation-ledger.md`     | built |
 | `.claude/requirements/phase-2-budgets-goals.md`           | built |
 | `.claude/requirements/phase-4-bills-calendar.md`          | built |
+| `.claude/requirements/phase-5-investments.md`             | built |
 | `.claude/requirements/phase-7-topics.md`                  | built |
 | `.claude/requirements/phase-8-sharing.md`                 | built |
 
-**Phases 0/1, 2, 4, 7 and 8 are built.** Phase 7 groups a trip's or a
+**Phases 0/1, 2, 4, 5, 7 and 8 are built.** Phase 7 groups a trip's or a
 renovation's transactions into one view. Phase 8 shares one account, goal,
 budget, bill or topic at a time with another household member, read-only: the
 five list endpoints take `scope=OWN|SHARED|ALL` (defaulting to `OWN`, so
@@ -82,16 +84,20 @@ original Phase 7 (Automation & Family Access) was dropped too, and its number
 is reused by the topics doc above since nothing referenced it. Phases 5 and 6
 keep their numbers.
 
-`.claude/requirements/phase-5-investments.md` and `phase-6-net-worth.md` hold
-specs for investments and net worth. They're written
-up but **out of scope** — revisit once
-Phases 0–4 are actually running and it's clear what's genuinely wanted. Treat
-them as a starting point to re-review, not settled decisions.
+Phase 5 records investments: a `TRADE` is a fourth transaction type, valid on
+`BROKER` and `CRYPTO` accounts, that debits or credits the account like any
+other row, and `GET /api/v1/investments` derives the holdings and what they
+cost. There is no current price or rate yet, so nothing reports what a holding
+is worth today.
 
-Every in-scope phase is spec'd, and every open question has been decided —
-there are no unresolved assumptions left in Phases 0–4. (Assumptions remain in
-the not-yet-built docs, flagged inline: one in the out-of-scope Phase 5/6 pair,
-one in Phase 7 — whether a transaction may belong to more than one topic,
+`.claude/requirements/phase-6-net-worth.md` holds the spec for net worth. It
+is written up but **not built**, and it predates how Phase 5 turned out — treat
+it as a starting point to re-review, not a settled decision.
+
+Every built phase is spec'd, and every open question has been decided —
+there are no unresolved assumptions left in Phases 0–5. (Assumptions remain,
+flagged inline: one in the unbuilt Phase 6 — how to value investments without
+a price source; one in Phase 7 — whether a transaction may belong to more than one topic,
 built as one-per-transaction; and three in Phase 8, all about how much a share
 exposes.)
 
@@ -103,6 +109,4 @@ endpoints under `/api/v1/`; balances corrected via an `ADJUSTMENT`
 transaction rather than a direct edit; no pagination, date-range bounded
 instead.
 
-**Phases 0/1, 2, 4 and 7 are all built; Phase 8 is spec'd and next.** Phases 5
-and 6 remain out of scope; revisit them only once this is genuinely in daily
-use.
+**Phases 0/1, 2, 4, 5, 7 and 8 are all built.** Phase 6 is the only one left.

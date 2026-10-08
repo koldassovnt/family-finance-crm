@@ -11,24 +11,34 @@ As of **2026-09-20**. Backend `main` at `29e9ece`; the frontend was at
 | 2 | Budgets (month-versioned limits) and goals | Built |
 | 3 | Loans & mortgages | **Dropped** — tracked as ordinary expense categories |
 | 4 | Bills and the due-date calendar | Built |
-| 5 | Investment portfolio | Spec'd, **out of scope** |
-| 6 | Net worth and reporting | Spec'd, **out of scope** |
+| 5 | Investments — trades on broker and crypto accounts, holdings at cost | Built 2026-10-08, **backend only** |
+| 6 | Net worth and reporting | Spec'd, not built; waiting on market-data APIs (`../todo.md`) |
 | 7 | Topics — a trip's or renovation's transactions as one view | Built |
 | 8 | Sharing a single account/goal/budget/bill/topic with another member, read-only | Built, and built in the frontend too |
 
 The original Phase 7 (*Automation & Family Access*) was dropped and its number
 reused by topics. Phases 5 and 6 keep theirs.
 
-**Migrations run to `V8`.** V1 initial schema, V2 budgets/goals, V3 transaction
+**Migrations run to `V9`.** V1 initial schema, V2 budgets/goals, V3 transaction
 exchange rate, V4 budget versions, V5 goal archived + password rotation,
-V6 bills, V7 topics, V8 shares.
+V6 bills, V7 topics, V8 shares, V9 trades. V9 was applied to the live
+database on 2026-10-08, after an on-demand dump
+(`family_finance-2026-10-08_1614.dump`).
 
-**Tests: 194, all passing**, unit-only with MockK. Integration tests are
+**Tests: 231, all passing** (2026-10-08), unit-only with MockK. Integration tests are
 deliberately deferred by the requirements until there is a frontend and a
 Telegram bot to test against — which is now half true, so this is worth
 revisiting rather than treating as settled.
 
 ### Endpoints added most recently
+
+- Phase 5 (2026-10-08): `POST /api/v1/transactions` accepts `type=TRADE` with
+  `tradeSide`, `ticker`, `quantity`, `unitPrice`; `PATCH` corrects the last
+  three. `GET /api/v1/investments` and `GET /api/v1/accounts/{id}/holdings`
+  return derived holdings with cost totals per currency. `AccountType` gained
+  `CRYPTO`. `TransactionResponse` gained four nullable trade fields, so an
+  existing client is unaffected until it sends or reads them. **The frontend
+  has none of this yet** and has not been told.
 
 - The `/api/v1/shares` family (Phase 8): `GET` for who one resource is shared
   with (owner only), `POST` to grant, `DELETE` to revoke, plus `/incoming` and
@@ -91,9 +101,11 @@ What that means in the code, so the next session does not have to rediscover it:
 
 Otherwise nothing is half-built. These are open by choice:
 
-1. **Phases 5 and 6** (investments, net worth) — spec'd, out of scope. Revisit
-   only once this is in daily use. Phase 5 carries one open assumption: whether
-   a trade should move the broker account's cash balance (spec says no).
+1. **Phase 6** (net worth) — spec'd, not built. Its doc assumed price
+   snapshots that Phase 5 did not end up with. The owner decided on 2026-10-08
+   that it **waits** until they choose open APIs for exchange rates and for
+   crypto and stock prices; **Phase 5's current value** waits on the same
+   thing. Both are written up in `../todo.md`.
 2. **Phase 7's open assumption** — one topic per transaction, built that way.
    A join table would let one expense sit in two topics, at the cost of every
    cross-topic total double-counting it.

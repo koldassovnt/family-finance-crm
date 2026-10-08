@@ -12,6 +12,7 @@ import com.familyfinance.crm.repository.CategoryTotal
 import com.familyfinance.crm.service.BillWithStatus
 import com.familyfinance.crm.service.BudgetWithUsage
 import com.familyfinance.crm.service.GoalWithProgress
+import com.familyfinance.crm.service.Holding
 import com.familyfinance.crm.service.Readable
 import com.familyfinance.crm.service.TopicDetail
 import com.familyfinance.crm.service.TopicWithTotals
@@ -109,6 +110,39 @@ fun Transaction.toResponse() =
         category = category?.toResponse(),
         topic = topic?.toRef(),
         note = note,
+        tradeSide = tradeSide,
+        ticker = ticker,
+        quantity = quantity,
+        unitPrice = unitPrice,
+    )
+
+fun Holding.toResponse() =
+    HoldingResponse(
+        ticker = ticker,
+        accountId = account.requiredId(),
+        accountName = account.name,
+        accountType = account.type,
+        currency = currency,
+        quantity = quantity,
+        averagePrice = averagePrice,
+        averagePriceKzt = averagePriceKzt,
+        cost = cost,
+        costKzt = costKzt,
+    )
+
+fun List<Holding>.toInvestmentsResponse() =
+    InvestmentsResponse(
+        holdings = map { it.toResponse() },
+        totalsByCurrency =
+            groupBy { it.currency }
+                .map { (currency, holdings) ->
+                    CurrencyTotal(
+                        currency = currency,
+                        cost = holdings.sumOf { it.cost },
+                        costKzt = holdings.sumOf { it.costKzt },
+                    )
+                }.sortedBy { it.currency },
+        totalCostKzt = sumOf { it.costKzt },
     )
 
 fun Topic.toRef() = TopicRef(id = requiredId(), name = name, status = status)
