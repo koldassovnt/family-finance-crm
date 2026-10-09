@@ -20,10 +20,10 @@ counted in `unpriced` on the totals. If that ever becomes annoying, a
 hand-entered price per ticker is the smallest fix.
 
 Still open:
-- **API Ninjas' free-plan terms** list "data caching not allowed" and
-  "attribution required". Storing the latest quote is how the daily cap works;
-  the owner was told on 2026-10-09 and decides whether that is acceptable or
-  the paid plan is needed. The frontend should carry the attribution.
+- **The API Ninjas attribution** on the Investments page, which the free plan
+  requires; the frontend session has been asked. (The plan's "data caching
+  not allowed" line was settled by the owner on 2026-10-09: fine for a private
+  household tool.)
 - **Pre-filling the KZT rate** on a new transaction from the stored rate
   (`GET /api/v1/market-data/rates`), which is typed by hand today.
 

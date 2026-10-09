@@ -272,11 +272,12 @@ quote in place: stale and dated beats absent. Every holding carries
 With no `API_NINJAS_KEY` the feature is off: nothing is called, the refresh
 reports `configured: false`, and holdings report cost only, exactly as before.
 
-**Plan terms the owner should know:** the API Ninjas pricing page lists the
-free plan as non-commercial, attribution required, and "data caching not
-allowed". Storing the latest quote is what a daily cap requires; whether it
-counts as caching under their terms was raised with the owner on 2026-10-09
-and is theirs to judge.
+**Plan terms:** the API Ninjas pricing page lists the free plan as
+non-commercial, attribution required, and "data caching not allowed". Storing
+the latest quote is what a daily cap requires. **Decided by the owner on
+2026-10-09: this is acceptable**, because the app is a private household tool
+and not a public or production service. Revisit only if it is ever opened up
+beyond the family.
 
 ### What it adds to the API
 
