@@ -4,6 +4,7 @@ import com.familyfinance.crm.domain.Account
 import com.familyfinance.crm.domain.Bank
 import com.familyfinance.crm.domain.BaseEntity
 import com.familyfinance.crm.domain.Category
+import com.familyfinance.crm.domain.MarketQuote
 import com.familyfinance.crm.domain.Share
 import com.familyfinance.crm.domain.Topic
 import com.familyfinance.crm.domain.Transaction
@@ -12,10 +13,11 @@ import com.familyfinance.crm.repository.CategoryTotal
 import com.familyfinance.crm.service.BillWithStatus
 import com.familyfinance.crm.service.BudgetWithUsage
 import com.familyfinance.crm.service.GoalWithProgress
-import com.familyfinance.crm.service.Holding
 import com.familyfinance.crm.service.Readable
 import com.familyfinance.crm.service.TopicDetail
 import com.familyfinance.crm.service.TopicWithTotals
+import com.familyfinance.crm.service.ValuedHolding
+import java.math.BigDecimal
 import java.time.YearMonth
 import java.util.UUID
 
@@ -116,34 +118,55 @@ fun Transaction.toResponse() =
         unitPrice = unitPrice,
     )
 
-fun Holding.toResponse() =
+fun ValuedHolding.toResponse() =
     HoldingResponse(
-        ticker = ticker,
-        accountId = account.requiredId(),
-        accountName = account.name,
-        accountType = account.type,
-        currency = currency,
-        quantity = quantity,
-        averagePrice = averagePrice,
-        averagePriceKzt = averagePriceKzt,
-        cost = cost,
-        costKzt = costKzt,
+        ticker = holding.ticker,
+        accountId = holding.account.requiredId(),
+        accountName = holding.account.name,
+        accountType = holding.account.type,
+        currency = holding.currency,
+        quantity = holding.quantity,
+        averagePrice = holding.averagePrice,
+        averagePriceKzt = holding.averagePriceKzt,
+        cost = holding.cost,
+        costKzt = holding.costKzt,
+        price = price,
+        priceAsOf = priceAsOf,
+        exchange = exchange,
+        value = value,
+        valueKzt = valueKzt,
+        gain = gain,
+        gainKzt = gainKzt,
     )
 
-fun List<Holding>.toInvestmentsResponse() =
+fun List<ValuedHolding>.toInvestmentsResponse() =
     InvestmentsResponse(
         holdings = map { it.toResponse() },
         totalsByCurrency =
-            groupBy { it.currency }
+            groupBy { it.holding.currency }
                 .map { (currency, holdings) ->
                     CurrencyTotal(
                         currency = currency,
-                        cost = holdings.sumOf { it.cost },
-                        costKzt = holdings.sumOf { it.costKzt },
+                        cost = holdings.sumOf { it.holding.cost },
+                        costKzt = holdings.sumOf { it.holding.costKzt },
+                        value = holdings.sumOfKnown { it.value },
+                        valueKzt = holdings.sumOfKnown { it.valueKzt },
+                        gain = holdings.sumOfKnown { it.gain },
+                        gainKzt = holdings.sumOfKnown { it.gainKzt },
+                        unpriced = holdings.count { it.value == null },
                     )
                 }.sortedBy { it.currency },
-        totalCostKzt = sumOf { it.costKzt },
+        totalCostKzt = sumOf { it.holding.costKzt },
+        totalValueKzt = sumOfKnown { it.valueKzt },
+        totalGainKzt = sumOfKnown { it.gainKzt },
+        unpriced = count { it.valueKzt == null },
     )
+
+/** The figure summed over the holdings that have it, or null when none does. Callers report how many were left out. */
+private fun List<ValuedHolding>.sumOfKnown(figure: (ValuedHolding) -> BigDecimal?): BigDecimal? =
+    mapNotNull(figure).takeIf { it.isNotEmpty() }?.sumOf { it }
+
+fun MarketQuote.toRateResponse() = ExchangeRateResponse(currency = symbol, rateKzt = price, fetchedAt = fetchedAt)
 
 fun Topic.toRef() = TopicRef(id = requiredId(), name = name, status = status)
 

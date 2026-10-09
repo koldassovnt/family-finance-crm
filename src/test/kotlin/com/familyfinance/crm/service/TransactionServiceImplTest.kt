@@ -553,7 +553,7 @@ class TransactionServiceImplTest {
     fun `buying debits the broker account by quantity times price`() {
         val broker = account(owner, balance = "1000", currency = "USD", type = AccountType.BROKER)
 
-        val trade = trade(broker, TradeSide.BUY, quantity = "2.5", unitPrice = "100", exchangeRate = "500")
+        val trade = trade(broker, TradeSide.BUY, quantity = "2.5", unitPrice = "100", ticker = "VOO.US", exchangeRate = "500")
 
         assertEquals(BigDecimal("250.0000"), trade.amount)
         assertEquals(BigDecimal("125000.0000"), trade.amountKzt)
@@ -573,7 +573,7 @@ class TransactionServiceImplTest {
     fun `an opening position moves no cash`() {
         val crypto = account(owner, balance = "40", type = AccountType.CRYPTO)
 
-        trade(crypto, TradeSide.OPENING, quantity = "0.05", unitPrice = "30000000", ticker = "BTC")
+        trade(crypto, TradeSide.OPENING, quantity = "0.05", unitPrice = "30000000", ticker = "BTC/KZT")
 
         assertEquals(BigDecimal("40"), crypto.balance)
     }
@@ -637,7 +637,7 @@ class TransactionServiceImplTest {
 
         val error =
             assertThrows<ValidationException> {
-                trade(crypto, TradeSide.BUY, quantity = "0.00000000001", unitPrice = "10")
+                trade(crypto, TradeSide.BUY, quantity = "0.00000000001", unitPrice = "10", ticker = "BTC/KZT")
             }
 
         assertEquals(setOf("quantity"), error.fieldErrors.keys)

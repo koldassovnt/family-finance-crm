@@ -13,9 +13,10 @@ single resources with other household members as read-only viewers) is built;
 it is the first feature where a bug is a disclosure rather than a wrong
 number, so read its doc before touching any access check. Phase 6 (net worth)
 is written up but not built, and its doc needs re-reviewing against how
-Phase 5 turned out — don't start it unless asked. Modular monolith, no external
-services — it runs as a Docker container on a personal machine behind the home
-network.
+Phase 5 turned out — don't start it unless asked. Modular monolith; it runs as
+a Docker container on a personal machine behind the home network. Its one
+outbound dependency is the API Ninjas price and exchange-rate API, optional
+and capped at 30 calls a day per API — see "Market data" in the Phase 5 doc.
 
 The requirements are the source of truth and every open question in them is
 already decided: read `.claude/requirements/00-architecture-and-foundations.md`
@@ -76,6 +77,7 @@ first, then the relevant phase doc, before changing behaviour.
 src/main/kotlin/.../
   config/
   web/                # controllers
+  client/             # Feign clients for outbound APIs
   security/           # JWT filter and service
   service/            # interface + Impl pairs
   repository/

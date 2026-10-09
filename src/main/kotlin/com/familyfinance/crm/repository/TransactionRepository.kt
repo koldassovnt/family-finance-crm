@@ -284,6 +284,20 @@ interface TransactionRepository : JpaRepository<Transaction, UUID> {
     )
     fun findTradesByOwner(owner: User): List<Transaction>
 
+    /**
+     * Every trade of every owner. Only the price refresh reads this: a price
+     * belongs to the market, so what to fetch is whatever anyone holds.
+     */
+    @Query(
+        """
+        SELECT t FROM Transaction t
+        JOIN FETCH t.account a
+        WHERE a.isDeleted = false AND t.tradeSide IS NOT NULL
+        ORDER BY t.occurredOn, t.createdAt
+        """,
+    )
+    fun findAllTrades(): List<Transaction>
+
     @Query(
         """
         SELECT count(t) > 0 FROM Transaction t

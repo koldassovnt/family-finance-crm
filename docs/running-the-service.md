@@ -87,6 +87,20 @@ reset a password or create a second `OWNER`. Change the password through
 `POST /api/v1/users/me/password`, then delete `OWNER_PASSWORD` from `.env`;
 the app logs a reminder on every start until you do.
 
+**Optional: prices and exchange rates.** With an API Ninjas key in `.env` the
+app fetches the price of every asset held and the KZT rate of every account
+currency once a day at 08:00 Almaty time, at most 30 requests per API per day:
+
+```bash
+API_NINJAS_KEY=your-key
+```
+
+Restart the app after setting it. Without it the app runs as before and
+holdings show purchase cost only. To fetch immediately rather than wait for
+08:00: `POST /api/v1/market-data/refresh`; its answer says how many symbols
+were updated, failed, or left for tomorrow by the cap. The container needs
+outbound HTTPS to `api.api-ninjas.com`.
+
 Then log in and keep the token:
 
 ```bash

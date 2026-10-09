@@ -25,6 +25,13 @@ enum class TransactionType { INCOME, EXPENSE, TRANSFER, ADJUSTMENT, TRADE }
  */
 enum class TradeSide { BUY, SELL, OPENING }
 
+/**
+ * What a [MarketQuote] prices, which is also which API it came from. A
+ * holding's kind follows its account: a `CRYPTO` account holds coins, a
+ * `BROKER` account holds everything the stock API knows.
+ */
+enum class QuoteKind { STOCK, CRYPTO, CURRENCY }
+
 /** `MONTHLY` only — `YEARLY` waits for an actual need. */
 enum class BudgetPeriod { MONTHLY, }
 

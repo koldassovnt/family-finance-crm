@@ -9,10 +9,9 @@ by this document.
 ## Scope
 
 Record what is bought and sold in a broker or crypto account, and show what is
-held and what it cost. **Cost only, for now:** there is no current price and no
-current exchange rate anywhere in the system, so nothing here says what a
-holding is worth today. That is the next step, not an oversight — see
-"Deferred" below.
+held and what it cost. What a holding is worth today comes from an external
+price API — see "Market data" below — and is absent, never guessed, when no
+price is known.
 
 ## A trade is a transaction
 
@@ -36,9 +35,9 @@ On top of the common transaction fields, a `TRADE` carries four of its own.
 All four are set on a trade and null on everything else (a `CHECK` enforces it).
 
 - `tradeSide: enum` — `BUY`, `SELL`, `OPENING`
-- `ticker: String` — free text, trimmed and stored uppercase, at most 32
-  characters. **There is no instrument table.** Whether it is a stock, an ETF,
-  a bond or a coin goes in the transaction's `note`.
+- `ticker: String` — trimmed and stored uppercase, in the format its account
+  requires (see "Ticker format"). **There is no instrument table.** Whether it
+  is a stock, an ETF, a bond or a coin goes in the transaction's `note`.
 - `quantity: BigDecimal` — `NUMERIC(28,10)`. Fractional on purpose: a crypto
   quantity is rarely whole.
 - `unitPrice: BigDecimal` — `NUMERIC(28,10)`, the price of one unit **in the
@@ -48,6 +47,20 @@ All four are set on a trade and null on everything else (a `CHECK` enforces it).
 `amount` is **derived**: `quantity × unitPrice`, rounded half-up to four
 decimals. It is rejected if supplied, on create and on edit. A trade whose
 total rounds to zero is rejected.
+
+### Ticker format
+
+Decided by the owner on 2026-10-09: one spelling per kind of account, enforced
+on create and on edit (400 on `ticker`). It is what lets a holding be matched
+to a price with no instrument table. The frontend must apply the same rules.
+
+| Account | Format | Example | Rule |
+|---------|--------|---------|------|
+| `CRYPTO` | `COIN/CUR` | `TON/USD` | `CUR` must be the account's currency |
+| `BROKER`, any currency but KZT | `SYMBOL.EXCHANGE` | `VEA.US` | exchange suffix of 1–6 letters |
+| `BROKER` in KZT | plain | `HSBK`, `KZTO` | letters and digits only |
+
+Existing rows are not rewritten; the rule applies to what is entered from now on.
 
 ### Currency
 
@@ -160,13 +173,145 @@ Both holdings endpoints return:
 
 Totals are grouped by currency; currencies are only ever added together in KZT.
 
+## Market data — current value
+
+Built 2026-10-09 (migration `V10`) and run that day against the real API with
+the owner's key, on a throwaway database.
+
+The owner chose **API Ninjas** (`api-ninjas.com`), called through a **Feign
+client**, with **at most 30 requests a day to each of its three APIs**. This
+is the service's only outbound dependency.
+
+| What | Ticker as stored | Call | Quote stored as |
+|------|------------------|------|-----------------|
+| Exchange rate | — | `GET /v1/exchangerate?pair=USD_KZT` | `CURRENCY` / `USD`, price = KZT per 1 USD |
+| Stock, ETF, bond | `VEA.US` | `GET /v1/stockprice?ticker=VEA` | `STOCK` / `VEA.US`, in the currency the API reports |
+| Coin | `BTC/USD` | `GET /v1/cryptoprice?symbol=BTCUSDT` | `CRYPTO` / `BTC/USD`, currency `USD` |
+
+- **Which API a ticker goes to is decided by the account type**: a holding in
+  a `CRYPTO` account is a coin, one in a `BROKER` account is a stock.
+- **A dollar coin pair is asked for against USDT** — the owner's rule: "USD is
+  USDT in that case". `BTC/USD` → `BTCUSDT`.
+- **A US ticker is sent without its suffix** (`VEA.US` → `VEA`); any other
+  exchange suffix is sent as written (`HSBK.IL`), which is the API's own
+  spelling for non-US listings.
+- **A quote only values a holding in the same currency.** A stock the API
+  quotes in GBP, held in a USD account, gets no value rather than a wrong one.
+- **What is fetched:** every ticker anyone still holds in a non-KZT account,
+  and every currency other than KZT that any live account is in. Rates are
+  fetched for all account types, not only investment ones, so Phase 6 can use
+  them.
+- **Holdings in a KZT account are never sent**, because the answer is known to
+  be "unknown" and would cost a call a day — see below.
+
+### What the real API returned (2026-10-09, free plan)
+
+| Asked | Result |
+|-------|--------|
+| `USD_KZT`, `EUR_KZT` | rate returned |
+| `VEA` | 69.86 USD, exchange AMEX |
+| `VEA.US` | 400 — hence the suffix is stripped |
+| `BTCUSDT`, `ETHUSDT`, `ETHUSD` | price returned |
+| `TONUSDT`, `TONUSD`, `TONUSDC`, `TONBTC`, `TONCOINUSDT` | 400 — not available under that name |
+| `GRAMUSDT`, `GRAMUSD` | price returned (1.398). The owner says TON was renamed GRAM; that it is the same asset is their statement, not something this API confirms |
+| `KZTO`, `HSBK`, `KZTO.KZ` | 400 — **KASE is not covered** |
+| `HSBK.IL`, `HSBK.L` | returned, but these are the London GDR (USD / GBP), a different instrument from the KASE share |
+| `KSPI` | returned (NASDAQ, USD) |
+
+So for this owner today: rates, US-listed stocks and ETFs, and coins are
+priced — TON under its new name, `GRAM/USD` — and **everything held in the KZT
+broker account is not and will not be** from this provider. The owner decided
+on 2026-10-09 to leave KASE unpriced: those holdings show cost only.
+
+### Renaming a ticker
+
+An asset can change its name (TON → GRAM), and a price is looked up by ticker,
+so `POST /api/v1/accounts/{id}/holdings/rename` with `{"from": "TON/USD",
+"to": "GRAM/USD"}` rewrites the ticker on **every** trade of it in that
+account in one step — one at a time would split the holding in two. Owner
+only. `to` must be in the account's ticker format; `from` is matched as
+written, so rows that predate the format can still be renamed. A `to` already
+traded in the account is a 409: merging two histories could not be undone by
+renaming back. It answers with the account's holdings. The new name has no
+price until the next refresh.
+
+### The cap
+
+`app.market-data.daily-limit` (30) applies to each API separately and is
+counted in the `market_data_usage` table, one row per API per day, so it holds
+across restarts and manual refreshes. A call is counted **before** it is made:
+a request that fails has still spent quota. When there are more symbols than
+the cap allows, the never-fetched and then the stalest go first, so the next
+day continues where this one stopped.
+
+A symbol already fetched **today** is not asked for again (`upToDate` in the
+refresh answer): the source moves once a day, so a second ask buys the same
+answer. A symbol that failed has no quote from today, so it is retried on each
+refresh, within the cap.
+
+API Ninjas' own free-plan limits are 3,000 requests a month and 100 an hour;
+90 a day at most is 2,700 a month.
+
+### When
+
+- A scheduled job, daily at 08:00 `Asia/Almaty` (`app.market-data.refresh-cron`).
+  Once a day is all the free plan is worth: it serves the last session's
+  closing price and a once-daily rate.
+- `POST /api/v1/market-data/refresh` runs the same refresh on demand, under the
+  same cap.
+- **Reading never calls the API.** Holdings are valued from stored quotes only.
+
+### Storage and failure
+
+`market_quotes` holds the **latest** quote per symbol, overwritten on each
+refresh — no price history (a trend is Phase 6's job, and it snapshots totals).
+A failed call, an unknown symbol or an answer with no price leaves the previous
+quote in place: stale and dated beats absent. Every holding carries
+`priceAsOf` so staleness is visible.
+
+With no `API_NINJAS_KEY` the feature is off: nothing is called, the refresh
+reports `configured: false`, and holdings report cost only, exactly as before.
+
+**Plan terms the owner should know:** the API Ninjas pricing page lists the
+free plan as non-commercial, attribution required, and "data caching not
+allowed". Storing the latest quote is what a daily cap requires; whether it
+counts as caching under their terms was raised with the owner on 2026-10-09
+and is theirs to judge.
+
+### What it adds to the API
+
+Each holding gains `price`, `priceAsOf`, `exchange`, `value`, `valueKzt`,
+`gain`, `gainKzt`. `exchange` is where the stock trades as the price API names
+it (`AMEX` for `VEA.US`) — display only, stored from the same call that
+fetched the price, and null for coins and for anything unpriced (the owner's
+choice on 2026-10-09 over a hand-typed field). All null until a price in the
+holding's currency exists; `valueKzt`
+and `gainKzt` also need the currency's rate. `valueKzt` uses the **latest**
+rate while `costKzt` used each purchase's own, so `gainKzt` reflects the
+exchange rate moving as well as the price.
+
+`totalsByCurrency` rows gain `value`, `valueKzt`, `gain`, `gainKzt` and
+`unpriced`; the response gains `totalValueKzt`, `totalGainKzt` and `unpriced`.
+**The market totals cover only the holdings that have a price, and `unpriced`
+counts the ones left out.** Some holdings are never priced (TON, the KZT
+broker account), and they must not blank the total for everything else. Two
+consequences the frontend has to respect:
+
+- when `unpriced > 0`, show that the value is partial — "N holdings not priced";
+- the gain of a total is its `gain` field, **not** `value − cost`: `cost`
+  covers every holding and `value` only the priced ones.
+
+A market total is null only when nothing in it is priced.
+
+| Method | Path                           | Purpose |
+|--------|--------------------------------|---------|
+| GET    | `/api/v1/market-data/rates`    | latest KZT rate per currency, with `fetchedAt` |
+| POST   | `/api/v1/market-data/refresh`  | fetch now; returns `{configured, updated, upToDate, failed, overBudget}` |
+
 ## Deferred, not rejected
 
-- **Current value.** The owner intends to find open APIs for exchange rates and
-  for stock and crypto prices. When one is chosen, a latest price per ticker
-  and a latest rate per currency are all that is missing to show value and
-  unrealised gain next to cost. Nothing built here needs to change shape for it.
 - **Realised gain** on a sale.
+- **Price history**, and pre-filling a transaction's rate from the stored one.
 - **Fees.** There is no fee field; a fee can be folded into the price or
   recorded as an `EXPENSE` on the account.
 - **Corporate actions** (splits, ticker changes). A ticker can be corrected

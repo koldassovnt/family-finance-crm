@@ -356,7 +356,7 @@ class TransactionServiceImpl(
         rejectOnTrade("categoryId", request.categoryId)
         rejectOnTrade("topicId", request.topicId)
         val side = request.tradeSide ?: throw invalidField("tradeSide", "is required for a TRADE")
-        val ticker = normalizeTicker(request.ticker ?: throw invalidField("ticker", "is required for a TRADE"))
+        val ticker = normalizeTicker(request.ticker ?: throw invalidField("ticker", "is required for a TRADE"), account)
         val quantity = requireTradeFigure(request.quantity, "quantity")
         val unitPrice = requireTradeFigure(request.unitPrice, "unitPrice")
         if (side == TradeSide.SELL) requireHeld(account, ticker, quantity)
@@ -424,7 +424,7 @@ class TransactionServiceImpl(
     ): BigDecimal? {
         rejectOnTrade("amount", request.amount, "is derived from quantity × unitPrice for a TRADE")
         rejectOnTrade("toAmount", request.toAmount)
-        request.ticker?.let { trade.ticker = normalizeTicker(it) }
+        request.ticker?.let { trade.ticker = normalizeTicker(it, trade.account) }
         if (request.quantity == null && request.unitPrice == null) return null
         val quantity = request.quantity?.let { requireTradeFigure(it, "quantity") } ?: trade.quantity
         val unitPrice = request.unitPrice?.let { requireTradeFigure(it, "unitPrice") } ?: trade.unitPrice
@@ -565,7 +565,6 @@ class TransactionServiceImpl(
     }
 }
 
-private const val MAX_TICKER_LENGTH = 32
 private const val APPLY = 1
 private const val REVERSE = -1
 
@@ -627,14 +626,6 @@ private fun requireTradeFigure(
         throw invalidField(field, "must have at most $PRICE_SCALE decimal places")
     }
     return figure
-}
-
-private fun normalizeTicker(ticker: String): String {
-    val normalized = requireNonBlankName(ticker, "ticker").uppercase()
-    if (normalized.length > MAX_TICKER_LENGTH) {
-        throw invalidField("ticker", "must be at most $MAX_TICKER_LENGTH characters")
-    }
-    return normalized
 }
 
 private fun rejectOnTrade(

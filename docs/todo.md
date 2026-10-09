@@ -1,53 +1,39 @@
 # To do
 
-Ideas and deferred work that are wanted but not started. The phase docs in
-`.claude/requirements/` say what each feature should be; this file only says
-what is waiting and on what.
+Ideas and deferred work that are wanted but not started, or started and not
+finished. The phase docs in `.claude/requirements/` say what each feature
+should be; this file only says what is waiting and on what.
 
-## Market data from open APIs
+## Market data — prices API Ninjas cannot give
 
-**Waiting on:** the owner choosing the APIs. Nothing should be built, and no
-price or rate table added, until they are picked — the tables should follow
-what the chosen APIs return.
+Market data is built and was run with the real key on 2026-10-09 (design and
+the full results table: `phase-5-investments.md`, "Market data"). Rates,
+US-listed stocks and ETFs, and coins are priced. TON is priced under its new
+name: record it as `GRAM/USD`, or rename existing trades with
+`POST /api/v1/accounts/{id}/holdings/rename`.
 
-The idea (owner, 2026-10-08): find open APIs for three things and use them to
-show what the investments are worth now, next to what they cost.
+**Not available from API Ninjas at all: everything in the KZT broker account**
+(`KZTO`, `HSBK`, …) — KASE is not covered. `HSBK.IL` exists but is the London
+GDR in USD, a different instrument at a different price. The owner decided on
+2026-10-09 to skip KASE: those holdings show purchase cost only and are
+counted in `unpriced` on the totals. If that ever becomes annoying, a
+hand-entered price per ticker is the smallest fix.
 
-- **Exchange rates** — KZT per unit of each currency an account is held in.
-- **Crypto prices** — the current price of each coin held.
-- **Stock market prices** — the current price of each stock, ETF and bond held.
-
-What it unlocks:
-
-- **Current value and unrealised gain** on `GET /api/v1/investments` and
-  `GET /api/v1/accounts/{id}/holdings`, which report purchase cost only today
-  (see `phase-5-investments.md`, "Deferred, not rejected").
-- **Phase 6, net worth** — see below.
-- Possibly pre-filling the KZT rate on a new transaction, which is typed by
-  hand today.
-
-Things to settle when choosing:
-
-- Holdings are keyed by a free-text ticker, with no instrument table and no
-  record of whether a ticker is a stock or a coin. A price lookup needs to know
-  which API to ask and under what symbol, so either the account type decides
-  it (`CRYPTO` → the crypto API, `BROKER` → the stock API) or a ticker needs a
-  small mapping.
-- A crypto account's currency is three letters, so a stablecoin balance is
-  recorded as `USD`.
-- This would be the project's first outbound call. The architecture doc says
-  "no external services", so it needs a line there, a decision about what the
-  app shows when the API is down or rate-limited, and where an API key lives
-  (`.env`, like the other secrets).
-- Whether prices are fetched on a schedule and stored, or on demand and cached.
+Still open:
+- **API Ninjas' free-plan terms** list "data caching not allowed" and
+  "attribution required". Storing the latest quote is how the daily cap works;
+  the owner was told on 2026-10-09 and decides whether that is acceptable or
+  the paid plan is needed. The frontend should carry the attribution.
+- **Pre-filling the KZT rate** on a new transaction from the stored rate
+  (`GET /api/v1/market-data/rates`), which is typed by hand today.
 
 ## Phase 6 — net worth
 
-**Waiting on:** the market-data APIs above (decided by the owner 2026-10-08).
-Net worth needs today's value of the investments and today's rate for every
-non-KZT account; neither exists until a price and a rate source do. The spec
-in `phase-6-net-worth.md` predates how Phase 5 was built and must be
-re-reviewed before any of it is implemented.
+**Waiting on:** the owner's go-ahead, and a decision on how unpriced holdings
+(above) count toward net worth — at cost, or left out. Net worth
+needs today's value of the investments and today's rate for every non-KZT
+account; both now have a source. The spec in `phase-6-net-worth.md` predates
+how Phase 5 was built and must be re-reviewed before any of it is implemented.
 
 Its transaction export to XLSX does not depend on any of this and could be
 built on its own if wanted sooner.

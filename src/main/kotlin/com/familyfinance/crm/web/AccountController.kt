@@ -5,6 +5,7 @@ import com.familyfinance.crm.dto.AccountResponse
 import com.familyfinance.crm.dto.CreateAccountRequest
 import com.familyfinance.crm.dto.InvestmentsResponse
 import com.familyfinance.crm.dto.ReconcileRequest
+import com.familyfinance.crm.dto.RenameTickerRequest
 import com.familyfinance.crm.dto.TransactionResponse
 import com.familyfinance.crm.dto.UpdateAccountRequest
 import com.familyfinance.crm.dto.toInvestmentsResponse
@@ -166,5 +167,32 @@ class AccountController(
     ): InvestmentsResponse =
         investmentService
             .accountHoldings(accountId = id, reader = currentUser.require())
+            .toInvestmentsResponse()
+
+    @PostMapping("/{id}/holdings/rename")
+    @Operation(
+        summary = "Rename a ticker",
+        description =
+            "For an asset that changed its name: rewrites `from` to `to` on every trade of it in this " +
+                "account, in one step. `to` must be in the format the account requires. Owner only. " +
+                "Returns the account's holdings afterwards. Its price appears after the next refresh.",
+    )
+    @ApiResponse(responseCode = "200", description = "The account's holdings after the rename")
+    @ApiResponse(
+        responseCode = "400",
+        description = "`from` is not traded in this account, or `to` is in the wrong format",
+        content = [Content(schema = Schema(implementation = ErrorResponse::class))],
+    )
+    @ApiResponse(
+        responseCode = "409",
+        description = "`to` is already traded in this account",
+        content = [Content(schema = Schema(implementation = ErrorResponse::class))],
+    )
+    fun renameTicker(
+        @PathVariable id: UUID,
+        @Valid @RequestBody request: RenameTickerRequest,
+    ): InvestmentsResponse =
+        investmentService
+            .renameTicker(accountId = id, owner = currentUser.require(), request = request)
             .toInvestmentsResponse()
 }

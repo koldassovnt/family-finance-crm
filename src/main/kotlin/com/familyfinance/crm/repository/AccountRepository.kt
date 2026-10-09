@@ -48,4 +48,8 @@ interface AccountRepository : JpaRepository<Account, UUID> {
         """,
     )
     fun findAllActiveByIds(ids: Collection<UUID>): List<Account>
+
+    /** Every currency any live account is held in — the rates worth fetching. */
+    @Query("SELECT DISTINCT a.currency FROM Account a WHERE a.isDeleted = false")
+    fun findActiveCurrencies(): List<String>
 }

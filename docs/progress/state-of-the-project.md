@@ -32,6 +32,19 @@ revisiting rather than treating as settled.
 
 ### Endpoints added most recently
 
+- Market data (2026-10-09, migration `V10`, deployed that day after an
+  on-demand dump, `family_finance-2026-10-09_1150.dump`; run with the real API
+  key on a throwaway database first, and the live instance has the key but had
+  not yet run a refresh when this was written — the first is the 08:00 job):
+  holdings gained `price`, `priceAsOf`, `value`, `valueKzt`, `gain`,
+  `gainKzt`, and totals the matching fields plus `unpriced` — all nullable.
+  New: `GET /api/v1/market-data/rates`, `POST /api/v1/market-data/refresh`.
+  Needs `API_NINJAS_KEY` in `.env`; off without it. Tickers now have a
+  required format per account kind (`GRAM/USD`, `VEA.US`, `HSBK`), and
+  `POST /api/v1/accounts/{id}/holdings/rename` renames one across an account.
+  KASE tickers cannot be priced by this provider — see `../todo.md`.
+  **Tests: 268.** Migrations run to `V10`.
+
 - Phase 5 (2026-10-08): `POST /api/v1/transactions` accepts `type=TRADE` with
   `tradeSide`, `ticker`, `quantity`, `unitPrice`; `PATCH` corrects the last
   three. `GET /api/v1/investments` and `GET /api/v1/accounts/{id}/holdings`

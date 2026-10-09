@@ -32,10 +32,20 @@ dependencies {
 
     implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.9.1")
 
+    // The declarative client for the market-data API; versioned by the BOM below.
+    implementation("org.springframework.cloud:spring-cloud-starter-openfeign")
+
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit5")
     testImplementation("io.mockk:mockk:1.14.11")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+}
+
+dependencyManagement {
+    imports {
+        // 2025.0.x is the Spring Cloud train that pairs with Spring Boot 3.5.
+        mavenBom("org.springframework.cloud:spring-cloud-dependencies:2025.0.3")
+    }
 }
 
 kotlin {

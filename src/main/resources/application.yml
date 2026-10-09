@@ -24,6 +24,14 @@ spring:
     enabled: true
     locations: classpath:db/migration
     baseline-on-migrate: false
+  cloud:
+    openfeign:
+      client:
+        config:
+          default:
+            # A slow price API must not hold a refresh open indefinitely.
+            connect-timeout: 5000
+            read-timeout: 10000
 
 server:
   port: ${SERVER_PORT:8080}
@@ -37,6 +45,12 @@ app:
     email: ${OWNER_EMAIL:}
     display-name: ${OWNER_DISPLAY_NAME:}
     password: ${OWNER_PASSWORD:}
+  # Prices and exchange rates from API Ninjas. Blank key = switched off.
+  market-data:
+    api-key: ${API_NINJAS_KEY:}
+    base-url: https://api.api-ninjas.com
+    daily-limit: 30
+    refresh-cron: "0 0 8 * * *"
 
 springdoc:
   swagger-ui:

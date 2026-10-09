@@ -105,6 +105,41 @@ show for either. `requireNothingOversold` turns that into a 409. It relies on
 Hibernate flushing the change before its query runs, which a mocked
 repository cannot show — re-check it against Postgres if it is ever touched.
 
+**Market data comes from API Ninjas through Feign, 30 calls a day per API**
+(2026-10-09) — all three the owner's choices. Feign brought in the Spring
+Cloud BOM (`2025.0.x`, the train for Boot 3.5) for one client; Spring's own
+`@HttpExchange` interfaces would have done the same with no new dependency,
+and are the thing to move to if Spring Cloud ever gets in the way of a Boot
+upgrade.
+
+**The daily cap is counted in a table, before each call** (2026-10-09). An
+in-memory counter would reset on every deploy, and deploys happen on the same
+machine several times on a working day. Counting first means a request that
+times out still spends quota, which is how the provider sees it too.
+
+**`MarketDataServiceImpl.refresh` is not `@Transactional`, on purpose**
+(2026-10-09). It makes up to ninety HTTP calls; a transaction around them
+would hold a pooled connection for as long as a third party takes to answer.
+
+**A market total covers the priced holdings and counts the rest in
+`unpriced`** (2026-10-09). The first version returned null as soon as one
+holding had no price, on the argument that a partial sum passes for the whole.
+The first real refresh showed why that fails here: TON and every KASE ticker
+are never priced by this provider, so the totals would have been null forever.
+The gain of a total must be read from `gain`, never computed as
+`value − cost`, because the two cover different sets of holdings.
+
+**Tickers have a fixed format per account kind** (2026-10-09, the owner's
+rule): `TON/USD` in a crypto account, `VEA.US` in a foreign-currency broker
+account, plain `HSBK` in a KZT one. The price lookup depends on it — the
+suffix and the pair are how a free-text ticker is turned into the API's
+symbol — so loosening the validation breaks pricing silently.
+
+**KZT-account holdings are never sent to the price API** (2026-10-09). KASE
+tickers and KZT-quoted coins all returned 400 with a real key; asking daily
+would spend the cap on a known answer. If a provider that covers KASE is ever
+added, this filter in `MarketDataServiceImpl` is the thing to revisit.
+
 ## Serialization and formatting
 
 **Money serializes as a JSON number with trailing scale digits**

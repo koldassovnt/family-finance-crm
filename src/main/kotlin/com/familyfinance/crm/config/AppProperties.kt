@@ -15,7 +15,29 @@ data class AppProperties(
     @field:Valid
     val jwt: JwtProperties,
     val bootstrapOwner: BootstrapOwnerProperties = BootstrapOwnerProperties(),
+    @field:Valid
+    val marketData: MarketDataProperties = MarketDataProperties(),
 ) {
+    /**
+     * Prices and exchange rates from API Ninjas. Optional: with no key the app
+     * runs exactly as before and holdings simply report no current value.
+     */
+    data class MarketDataProperties(
+        /** Supplied via API_NINJAS_KEY; blank means market data is switched off. */
+        val apiKey: String = "",
+        val baseUrl: String = "https://api.api-ninjas.com",
+        /** The most calls sent to each of the three APIs in one day. */
+        @field:Min(0)
+        val dailyLimit: Int = 30,
+        /** When the daily refresh runs, in the app timezone. */
+        val refreshCron: String = "0 0 8 * * *",
+    ) {
+        val isConfigured: Boolean get() = apiKey.isNotBlank()
+
+        /** Never let the key reach a log line or a bind-failure report. */
+        override fun toString() = "MarketDataProperties(apiKey=***, baseUrl=$baseUrl, dailyLimit=$dailyLimit, refreshCron=$refreshCron)"
+    }
+
     /**
      * Seeds the single `OWNER` on a start that finds none — the bootstrap step
      * `00-` refers to. Supplied via OWNER_EMAIL, OWNER_DISPLAY_NAME and
