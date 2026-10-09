@@ -66,11 +66,10 @@ class ValuationTest {
     }
 
     @Test
-    fun `a coin is priced from the crypto quote, not a stock with the same ticker`() {
-        val exchange = account(owner, currency = "USD", type = AccountType.CRYPTO)
-        val quotes = QuoteBook(listOf(stock("BTC", "30"), quote(QuoteKind.CRYPTO, "BTC", "60000", "USD")))
+    fun `a coin pair is priced from the crypto quote even in an account typed as a broker`() {
+        val quotes = QuoteBook(listOf(quote(QuoteKind.CRYPTO, "BTC/USD", "60000", "USD")))
 
-        val valued = quotes.value(holding(exchange, "BTC"))
+        val valued = quotes.value(holding(usdBroker, "BTC/USD"))
 
         assertEquals(BigDecimal("120000.0000"), valued.value)
     }

@@ -1,7 +1,6 @@
 package com.familyfinance.crm.service
 
 import com.familyfinance.crm.domain.Account
-import com.familyfinance.crm.domain.AccountType
 import com.familyfinance.crm.domain.QuoteKind
 import com.familyfinance.crm.domain.TradeSide
 import com.familyfinance.crm.domain.Transaction
@@ -23,8 +22,13 @@ data class Holding(
 ) {
     val currency: String get() = account.currency
 
-    /** Which price API knows this ticker: decided by the account, since a ticker alone does not say. */
-    val quoteKind: QuoteKind get() = if (account.type == AccountType.CRYPTO) QuoteKind.CRYPTO else QuoteKind.STOCK
+    /**
+     * Which price API knows this ticker. Read from how the ticker is written —
+     * `GRAM/USD` is a coin, anything else a stock — and not from the account
+     * type: the owner's coins sit in an account typed `BROKER`, which the
+     * first live data showed.
+     */
+    val quoteKind: QuoteKind get() = if (isCoinPair(ticker)) QuoteKind.CRYPTO else QuoteKind.STOCK
     val averagePrice: BigDecimal get() = cost.divide(quantity, PRICE_SCALE, RoundingMode.HALF_UP)
     val averagePriceKzt: BigDecimal get() = costKzt.divide(quantity, PRICE_SCALE, RoundingMode.HALF_UP)
 }

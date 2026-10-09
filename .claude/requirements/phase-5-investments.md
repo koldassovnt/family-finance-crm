@@ -54,11 +54,17 @@ Decided by the owner on 2026-10-09: one spelling per kind of account, enforced
 on create and on edit (400 on `ticker`). It is what lets a holding be matched
 to a price with no instrument table. The frontend must apply the same rules.
 
-| Account | Format | Example | Rule |
-|---------|--------|---------|------|
-| `CRYPTO` | `COIN/CUR` | `TON/USD` | `CUR` must be the account's currency |
-| `BROKER`, any currency but KZT | `SYMBOL.EXCHANGE` | `VEA.US` | exchange suffix of 1–6 letters |
-| `BROKER` in KZT | plain | `HSBK`, `KZTO` | letters and digits only |
+| What | Format | Example | Where it is accepted |
+|------|--------|---------|----------------------|
+| A coin | `COIN/CUR`, `CUR` = the account's currency | `GRAM/USD` | any `CRYPTO` or `BROKER` account |
+| A stock, foreign currency | `SYMBOL.EXCHANGE`, suffix of 1–6 letters | `VEA.US` | a `BROKER` account in any currency but KZT |
+| A stock, KZT | plain, letters and digits only | `HSBK`, `KZTO` | a `BROKER` account in KZT |
+
+**The `/` is what makes a ticker a coin, not the account's type.** The first
+version went by account type, and the first look at live data showed the
+owner's coins sitting in an account typed `BROKER` (created before `CRYPTO`
+existed): they would have been sent to the stock API and could not have been
+renamed. A `CRYPTO` account takes coins only; a `BROKER` account takes both.
 
 Existing rows are not rewritten; the rule applies to what is entered from now on.
 
@@ -188,8 +194,8 @@ is the service's only outbound dependency.
 | Stock, ETF, bond | `VEA.US` | `GET /v1/stockprice?ticker=VEA` | `STOCK` / `VEA.US`, in the currency the API reports |
 | Coin | `BTC/USD` | `GET /v1/cryptoprice?symbol=BTCUSDT` | `CRYPTO` / `BTC/USD`, currency `USD` |
 
-- **Which API a ticker goes to is decided by the account type**: a holding in
-  a `CRYPTO` account is a coin, one in a `BROKER` account is a stock.
+- **Which API a ticker goes to is decided by how it is written**: a pair
+  (`GRAM/USD`) is a coin, anything else is a stock — see "Ticker format".
 - **A dollar coin pair is asked for against USDT** — the owner's rule: "USD is
   USDT in that case". `BTC/USD` → `BTCUSDT`.
 - **A US ticker is sent without its suffix** (`VEA.US` → `VEA`); any other
@@ -257,6 +263,10 @@ API Ninjas' own free-plan limits are 3,000 requests a month and 100 an hour;
 - A scheduled job, daily at 08:00 `Asia/Almaty` (`app.market-data.refresh-cron`).
   Once a day is all the free plan is worth: it serves the last session's
   closing price and a once-daily rate.
+- Once more about 20 seconds after every start, so a deploy made after 08:00
+  does not leave the instance without prices until the next morning (which is
+  exactly what the first deploy did). It costs nothing on a later restart the
+  same day, since what was fetched today is not asked for again.
 - `POST /api/v1/market-data/refresh` runs the same refresh on demand, under the
   same cap.
 - **Reading never calls the API.** Holdings are valued from stored quotes only.

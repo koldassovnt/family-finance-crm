@@ -40,6 +40,16 @@ class TickersTest {
     }
 
     @Test
+    fun `a coin pair is accepted in a foreign-currency broker account`() {
+        assertEquals("GRAM/USD", normalizeTicker("gram/usd", usdBroker))
+    }
+
+    @Test
+    fun `a crypto account takes coins only`() {
+        assertThrows<ValidationException> { normalizeTicker("VEA.US", crypto) }
+    }
+
+    @Test
     fun `a stock in a KZT broker account is the plain ticker`() {
         assertEquals("HSBK", normalizeTicker("hsbk", kztBroker))
     }
