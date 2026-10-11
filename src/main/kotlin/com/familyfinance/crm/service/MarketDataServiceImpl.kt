@@ -19,12 +19,19 @@ import java.math.BigDecimal
 import java.time.Clock
 import java.time.Instant
 import java.time.LocalDate
+import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.withLock
 
 /**
  * Deliberately **not** `@Transactional`: a refresh makes up to ninety HTTP
  * calls, and holding a database connection open across them would tie the
  * pool to a third party's response time. Each save commits on its own, which
  * is also what makes the call count survive a refresh that dies halfway.
+ *
+ * Refreshes run one at a time. Each reads the day's call count once and counts
+ * on from it in memory, so two at once (the startup run and a manual one, or
+ * two people pressing refresh) would each spend up to the cap and fetch the
+ * same symbols. A JVM lock is enough because only one instance ever runs.
  */
 @Service
 class MarketDataServiceImpl(
@@ -37,8 +44,13 @@ class MarketDataServiceImpl(
     private val clock: Clock,
 ) : MarketDataService {
     private val log = LoggerFactory.getLogger(javaClass)
+    private val refreshLock = ReentrantLock()
 
-    override fun refresh(): MarketRefreshResponse {
+    // A caller that waits here finds the first run's quotes and count already
+    // saved, so its own run asks only for what is still missing.
+    override fun refresh(): MarketRefreshResponse = refreshLock.withLock { refreshNow() }
+
+    private fun refreshNow(): MarketRefreshResponse {
         if (!properties.marketData.isConfigured) {
             return MarketRefreshResponse(configured = false, updated = 0, upToDate = 0, failed = 0, overBudget = 0)
         }

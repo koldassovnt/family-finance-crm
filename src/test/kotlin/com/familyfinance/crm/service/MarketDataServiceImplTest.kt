@@ -29,6 +29,10 @@ import org.junit.jupiter.api.Test
 import java.math.BigDecimal
 import java.time.Instant
 import java.time.LocalDate
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
+import kotlin.concurrent.thread
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 
@@ -93,6 +97,30 @@ class MarketDataServiceImplTest {
 
         assertEquals(1, report.overBudget)
         verify(exactly = 0) { client.exchangeRate(any()) }
+    }
+
+    @Test
+    fun `a refresh started while another is running waits for it, so together they stay within the cap`() {
+        every { accountRepository.findActiveCurrencies() } returns listOf("USD", "EUR")
+        storeUsageLikeTheDatabase()
+        val firstCallStarted = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        every { client.exchangeRate(any()) } answers {
+            firstCallStarted.countDown()
+            release.await(5, TimeUnit.SECONDS)
+            ExchangeRateQuote(BigDecimal("500"))
+        }
+        val service = service(dailyLimit = 2)
+
+        val first = thread { service.refresh() }
+        firstCallStarted.await(5, TimeUnit.SECONDS)
+        val second = thread { service.refresh() }
+        second.join(SECOND_REFRESH_HEAD_START_MS)
+        release.countDown()
+        first.join()
+        second.join()
+
+        verify(exactly = 2) { client.exchangeRate(any()) }
     }
 
     @Test
@@ -198,6 +226,17 @@ class MarketDataServiceImplTest {
         unitPrice = BigDecimal("100"),
     )
 
+    /** Each read returns a fresh copy of the last saved count, as a database read would. */
+    private fun storeUsageLikeTheDatabase() {
+        val saved = AtomicReference<Int?>(null)
+        every { usageRepository.findByKindAndDay(QuoteKind.CURRENCY, today) } answers {
+            saved.get()?.let { MarketDataUsage(kind = QuoteKind.CURRENCY, day = today, calls = it) }
+        }
+        every { usageRepository.save(any<MarketDataUsage>()) } answers {
+            firstArg<MarketDataUsage>().also { saved.set(it.calls) }
+        }
+    }
+
     private fun service(
         apiKey: String = "key",
         dailyLimit: Int = 30,
@@ -227,3 +266,9 @@ class MarketDataServiceImplTest {
         fetchedAt = Instant.parse(fetchedAt),
     )
 }
+
+/**
+ * Long enough for an unguarded second refresh to read the count and reach the
+ * API while the first is still mid-call; a guarded one just waits it out.
+ */
+private const val SECOND_REFRESH_HEAD_START_MS = 300L
