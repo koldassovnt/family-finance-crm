@@ -15,7 +15,7 @@ As of **2026-09-20**. Backend `main` at `29e9ece`; the frontend was at
 | 6 | Net worth and reporting | Transaction export to XLSX built; net worth spec'd, not built (`../todo.md`) |
 | 7 | Topics — a trip's or renovation's transactions as one view | Built |
 | 8 | Sharing a single account/goal/budget/bill/topic with another member, read-only | Built, and built in the frontend too |
-| 9 | Planned purchases — a list of things to buy, personal or family, marked bought | Built 2026-10-13, **backend only** |
+| 9 | Planned purchases — a list of things to buy, personal or family, marked bought | Built 2026-10-13, and built in the frontend too |
 
 The original Phase 7 (*Automation & Family Access*) was dropped and its number
 reused by topics. Phases 5 and 6 keep theirs.
@@ -43,7 +43,7 @@ revisiting rather than treating as settled.
   Needs `API_NINJAS_KEY` in `.env`; off without it. Tickers now have a
   required format per account kind (`GRAM/USD`, `VEA.US`, `HSBK`), and
   `POST /api/v1/accounts/{id}/holdings/rename` renames one across an account.
-  KASE tickers cannot be priced by this provider — see `../todo.md`.
+  KASE tickers are priced from kase.kz since 2026-10-13 ("KASE" in the Phase 5 doc).
   **Tests: 268.** Migrations run to `V10`.
 
 - Phase 5 (2026-10-08): `POST /api/v1/transactions` accepts `type=TRADE` with

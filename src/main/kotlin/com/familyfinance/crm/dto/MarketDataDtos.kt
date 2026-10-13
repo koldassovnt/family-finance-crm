@@ -5,7 +5,7 @@ import java.time.Instant
 
 /** What one refresh did, counted in symbols. `updated` and `failed` each cost one call; the other two cost none. */
 data class MarketRefreshResponse(
-    /** False when no API key is set; nothing was attempted. */
+    /** False when no API Ninjas key is set; only KASE, which needs none, was asked. */
     val configured: Boolean,
     val updated: Int,
     /** Already fetched today, so not asked for again. */

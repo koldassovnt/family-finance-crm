@@ -104,6 +104,12 @@ holdings show purchase cost only. To fetch immediately rather than wait for
 were updated, failed, or left for tomorrow by the cap. The container needs
 outbound HTTPS to `api.api-ninjas.com`.
 
+**Stocks in a KZT broker account** are priced from `kase.kz` instead, with no
+key and nothing to set up: at 18:30 Almaty time every day, and on the same
+manual refresh. It needs outbound HTTPS to `kase.kz`. If that site is down or
+changes, those holdings keep their last price and nothing else is affected;
+the app log has a `No STOCK quote for ...` warning per ticker.
+
 Then log in and keep the token:
 
 ```bash

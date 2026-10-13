@@ -51,6 +51,9 @@ app:
     base-url: https://api.api-ninjas.com
     daily-limit: 30
     refresh-cron: "0 0 8 * * *"
+    # Stocks held in a KZT account come from KASE's own site: no key, no quota.
+    kase-base-url: https://kase.kz
+    kase-refresh-cron: "0 30 18 * * *"
 
 springdoc:
   swagger-ui:

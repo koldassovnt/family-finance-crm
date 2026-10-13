@@ -31,6 +31,10 @@ data class AppProperties(
         val dailyLimit: Int = 30,
         /** When the daily refresh runs, in the app timezone. */
         val refreshCron: String = "0 0 8 * * *",
+        /** KASE's site, asked for the stocks of KZT accounts; needs no key. */
+        val kaseBaseUrl: String = "https://kase.kz",
+        /** When KASE's closing prices are fetched, in the app timezone: after its trading day. */
+        val kaseRefreshCron: String = "0 30 18 * * *",
     ) {
         val isConfigured: Boolean get() = apiKey.isNotBlank()
 

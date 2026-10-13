@@ -1,6 +1,7 @@
 package com.familyfinance.crm.service
 
 import com.familyfinance.crm.client.ApiNinjasClient
+import com.familyfinance.crm.client.KaseClient
 import com.familyfinance.crm.config.AppProperties
 import com.familyfinance.crm.domain.BASE_CURRENCY
 import com.familyfinance.crm.domain.CURRENCY_CODE_LENGTH
@@ -36,6 +37,7 @@ import kotlin.concurrent.withLock
 @Service
 class MarketDataServiceImpl(
     private val client: ApiNinjasClient,
+    private val kaseClient: KaseClient,
     private val quoteRepository: MarketQuoteRepository,
     private val usageRepository: MarketDataUsageRepository,
     private val transactionRepository: TransactionRepository,
@@ -46,34 +48,73 @@ class MarketDataServiceImpl(
     private val log = LoggerFactory.getLogger(javaClass)
     private val refreshLock = ReentrantLock()
 
-    // A caller that waits here finds the first run's quotes and count already
-    // saved, so its own run asks only for what is still missing.
-    override fun refresh(): MarketRefreshResponse = refreshLock.withLock { refreshNow() }
-
-    private fun refreshNow(): MarketRefreshResponse {
-        if (!properties.marketData.isConfigured) {
-            return MarketRefreshResponse(configured = false, updated = 0, upToDate = 0, failed = 0, overBudget = 0)
+    // A caller that waits on the lock finds the first run's quotes and count
+    // already saved, so its own run asks only for what is still missing.
+    // Without an API key only KASE, which needs none, is asked.
+    override fun refresh(): MarketRefreshResponse =
+        refreshLock.withLock {
+            val holdings = holdingsOf(transactionRepository.findAllTrades())
+            val fromApiNinjas =
+                if (properties.marketData.isConfigured) {
+                    wantedSymbols(holdings).flatMap { (kind, symbols) -> refreshKind(kind, symbols) }
+                } else {
+                    emptyList()
+                }
+            report(fromApiNinjas + refreshLocalExchange(holdings, afterClose = false))
         }
-        val outcomes = wantedSymbols().flatMap { (kind, symbols) -> refreshKind(kind, symbols) }
-        return MarketRefreshResponse(
-            configured = true,
+
+    override fun refreshLocalExchange(): MarketRefreshResponse =
+        refreshLock.withLock {
+            report(refreshLocalExchange(holdingsOf(transactionRepository.findAllTrades()), afterClose = true))
+        }
+
+    private fun report(outcomes: List<Outcome>) =
+        MarketRefreshResponse(
+            configured = properties.marketData.isConfigured,
             updated = outcomes.count { it == Outcome.UPDATED },
             upToDate = outcomes.count { it == Outcome.UP_TO_DATE },
             failed = outcomes.count { it == Outcome.FAILED },
             overBudget = outcomes.count { it == Outcome.OVER_BUDGET },
         ).also { log.info("Market data refresh: {}", it) }
-    }
 
     override fun rates(): List<MarketQuote> = quoteRepository.findAllByKindOrderBySymbol(QuoteKind.CURRENCY)
 
-    /** What is worth a call: assets someone still holds, and currencies some account is in. */
-    private fun wantedSymbols(): Map<QuoteKind, Set<String>> {
-        val holdings = holdingsOf(transactionRepository.findAllTrades())
-        return mapOf(
+    /** What is worth an API Ninjas call: assets someone still holds, and currencies some account is in. */
+    private fun wantedSymbols(holdings: List<Holding>): Map<QuoteKind, Set<String>> =
+        mapOf(
             QuoteKind.CURRENCY to accountRepository.findActiveCurrencies().filterNot(::isBaseCurrency).toSet(),
             QuoteKind.STOCK to holdings.tickersOf(QuoteKind.STOCK),
             QuoteKind.CRYPTO to holdings.tickersOf(QuoteKind.CRYPTO),
         )
+
+    /**
+     * Stocks held in a KZT account are priced by KASE itself. No key and no
+     * quota, so no cap; the once-a-day rule still applies, except to the run
+     * [afterClose], which exists to replace whatever was fetched earlier in
+     * the day with the closing price.
+     *
+     * KASE's endpoint is undocumented and may vanish: every ticker fails on
+     * its own, and a failure only leaves the holding with its previous price.
+     */
+    private fun refreshLocalExchange(
+        holdings: List<Holding>,
+        afterClose: Boolean,
+    ): List<Outcome> {
+        val known = quoteRepository.findAllByKindOrderBySymbol(QuoteKind.STOCK).associateBy { it.symbol }
+        val today = LocalDate.now(clock)
+        return holdings.localExchangeTickers().map { ticker ->
+            if (!afterClose && known[ticker].isFrom(today)) {
+                Outcome.UP_TO_DATE
+            } else {
+                fetchAndStore(QuoteKind.STOCK, ticker, known[ticker]) { fetchFromKase(ticker) }
+            }
+        }
+    }
+
+    private fun fetchFromKase(ticker: String): Fetched? {
+        val security = kaseClient.security(ticker)
+        val price = security.closePrice ?: security.price
+        return price?.let { security.currencyType?.let { currency -> Fetched(it, currency.uppercase(), KASE) } }
     }
 
     private fun refreshKind(
@@ -97,7 +138,7 @@ class MarketDataServiceImpl(
                     // Counted before the call: a request that fails still spent quota.
                     usage.calls += 1
                     usageRepository.save(usage)
-                    fetchAndStore(kind, symbol, known[symbol])
+                    fetchAndStore(kind, symbol, known[symbol]) { fetch(kind, symbol) }
                 }
             }
     }
@@ -108,10 +149,11 @@ class MarketDataServiceImpl(
         kind: QuoteKind,
         symbol: String,
         existing: MarketQuote?,
+        fetch: () -> Fetched?,
     ): Outcome {
         val fetched =
             try {
-                fetch(kind, symbol)
+                fetch()
             } catch (e: FeignException) {
                 log.warn("No {} quote for {}: HTTP {} {}", kind, symbol, e.status(), e.message)
                 null
@@ -171,11 +213,16 @@ class MarketDataServiceImpl(
 }
 
 /**
- * Holdings in a KZT account are left out: the price API covers neither the
- * local exchange nor KZT-quoted coins, so asking would spend a call every day
- * on an answer that is always "unknown". Checked with a real key on 2026-10-09.
+ * Holdings in a KZT account are left out: API Ninjas covers neither the local
+ * exchange nor KZT-quoted coins, so asking would spend a call every day on an
+ * answer that is always "unknown". Checked with a real key on 2026-10-09.
  */
 private fun List<Holding>.tickersOf(kind: QuoteKind): Set<String> =
     filter { it.quoteKind == kind && !isBaseCurrency(it.currency) }.map { it.ticker }.toSet()
 
+/** What KASE is asked for instead: the stocks, never the coins, of a KZT account. */
+private fun List<Holding>.localExchangeTickers(): List<String> =
+    filter { it.quoteKind == QuoteKind.STOCK && isBaseCurrency(it.currency) }.map { it.ticker }.distinct().sorted()
+
 private const val MAX_EXCHANGE_LENGTH = 32
+private const val KASE = "KASE"

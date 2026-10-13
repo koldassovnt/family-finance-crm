@@ -185,8 +185,9 @@ Built 2026-10-09 (migration `V10`) and run that day against the real API with
 the owner's key, on a throwaway database.
 
 The owner chose **API Ninjas** (`api-ninjas.com`), called through a **Feign
-client**, with **at most 30 requests a day to each of its three APIs**. This
-is the service's only outbound dependency.
+client**, with **at most 30 requests a day to each of its three APIs**. It was
+the service's only outbound dependency until KASE prices were added on
+2026-10-13 — see "KASE" below.
 
 | What | Ticker as stored | Call | Quote stored as |
 |------|------------------|------|-----------------|
@@ -226,8 +227,40 @@ is the service's only outbound dependency.
 
 So for this owner today: rates, US-listed stocks and ETFs, and coins are
 priced — TON under its new name, `GRAM/USD` — and **everything held in the KZT
-broker account is not and will not be** from this provider. The owner decided
-on 2026-10-09 to leave KASE unpriced: those holdings show cost only.
+broker account is not and will not be** from this provider. The owner first
+left KASE unpriced (2026-10-09), then on 2026-10-13 found a source for it:
+
+### KASE
+
+Stocks held in a KZT account are priced by the Kazakhstan Stock Exchange's own
+site, since 2026-10-13.
+
+- **Call:** `GET https://kase.kz/api/instruments/securities/{TICKER}/`, the
+  JSON endpoint kase.kz's pages load. No key. The ticker is sent as stored
+  (`HSBK`, `KZTO`, `KASXF`); an unknown one is a 404.
+- **What is stored:** `close_price` (the last deal, `price`, when there is no
+  close) in `currency_type`, as a `STOCK` quote with exchange `KASE` — the
+  same `market_quotes` row a US stock gets, so holdings, totals and `unpriced`
+  pick it up with no other change. A security KASE quotes in another currency
+  than the account's gets no value, by the existing same-currency rule.
+- **What is asked for:** every stock (never a coin pair) anyone holds in a KZT
+  account.
+- **When:** a scheduled run at **18:30 Almaty** (`app.market-data.
+  kase-refresh-cron`), after the trading day, which always fetches and so
+  replaces a price taken earlier that day with the close. The 08:00 run, the
+  run after startup and `POST /market-data/refresh` also ask KASE, but only
+  for a ticker with no quote from today.
+- **No cap and no usage row:** there is no quota to protect, and it is one
+  call per ticker held.
+- **Works without `API_NINJAS_KEY`.** `configured` in the refresh answer still
+  means the API Ninjas key, so it can be `false` with `updated` above zero.
+
+**It must not be depended on.** The endpoint is undocumented and can change or
+disappear without notice. Decided by the owner: if it stops working, nothing
+may break. Each ticker fails on its own (`failed` in the refresh answer, a
+warning in the log), the refresh still answers 200, and the holding keeps its
+last stored price with its `priceAsOf`, or shows cost only if it never had
+one. Checked on 2026-10-13 by pointing the client at a dead address.
 
 ### Renaming a ticker
 
@@ -279,8 +312,8 @@ A failed call, an unknown symbol or an answer with no price leaves the previous
 quote in place: stale and dated beats absent. Every holding carries
 `priceAsOf` so staleness is visible.
 
-With no `API_NINJAS_KEY` the feature is off: nothing is called, the refresh
-reports `configured: false`, and holdings report cost only, exactly as before.
+With no `API_NINJAS_KEY` API Ninjas is off: it is never called, the refresh
+reports `configured: false`, and everything but KASE stocks reports cost only.
 
 **Plan terms:** the API Ninjas pricing page lists the free plan as
 non-commercial, attribution required, and "data caching not allowed". Storing

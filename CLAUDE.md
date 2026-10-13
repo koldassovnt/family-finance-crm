@@ -17,9 +17,11 @@ not, unconnected to the ledger) is built. Phase 6 (net worth)
 is written up but not built, apart from its transaction export to XLSX
 (`/api/v1/reports/transactions.xlsx`), and its doc needs re-reviewing against how
 Phase 5 turned out — don't start it unless asked. Modular monolith; it runs as
-a Docker container on a personal machine behind the home network. Its one
-outbound dependency is the API Ninjas price and exchange-rate API, optional
-and capped at 30 calls a day per API — see "Market data" in the Phase 5 doc.
+a Docker container on a personal machine behind the home network. It has two
+outbound dependencies, both for prices and both optional: the API Ninjas price
+and exchange-rate API, capped at 30 calls a day per API, and kase.kz's
+undocumented JSON endpoint for stocks in KZT accounts, which may vanish and
+must never be relied on — see "Market data" and "KASE" in the Phase 5 doc.
 
 The requirements are the source of truth and every open question in them is
 already decided: read `.claude/requirements/00-architecture-and-foundations.md`

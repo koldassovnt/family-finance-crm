@@ -5,6 +5,8 @@ import com.familyfinance.crm.account
 import com.familyfinance.crm.client.ApiNinjasClient
 import com.familyfinance.crm.client.CryptoPriceQuote
 import com.familyfinance.crm.client.ExchangeRateQuote
+import com.familyfinance.crm.client.KaseClient
+import com.familyfinance.crm.client.KaseSecurity
 import com.familyfinance.crm.client.StockPriceQuote
 import com.familyfinance.crm.config.AppProperties
 import com.familyfinance.crm.domain.AccountType
@@ -38,6 +40,7 @@ import kotlin.test.assertFalse
 
 class MarketDataServiceImplTest {
     private val client = mockk<ApiNinjasClient>()
+    private val kaseClient = mockk<KaseClient>()
     private val quoteRepository = mockk<MarketQuoteRepository>()
     private val usageRepository = mockk<MarketDataUsageRepository>()
     private val transactionRepository = mockk<TransactionRepository>()
@@ -51,6 +54,7 @@ class MarketDataServiceImplTest {
         every { usageRepository.save(any<MarketDataUsage>()) } answers { firstArg() }
         every { transactionRepository.findAllTrades() } returns emptyList()
         every { accountRepository.findActiveCurrencies() } returns listOf("KZT")
+        every { kaseClient.security(any()) } returns KaseSecurity(closePrice = BigDecimal("100"), currencyType = "KZT")
     }
 
     @Test
@@ -157,6 +161,130 @@ class MarketDataServiceImplTest {
     }
 
     @Test
+    fun `a stock held in a KZT account is priced by KASE at its closing price`() {
+        every { transactionRepository.findAllTrades() } returns listOf(opening(AccountType.BROKER, "HSBK", currency = "KZT"))
+        every { kaseClient.security("HSBK") } returns
+            KaseSecurity(closePrice = BigDecimal("374.0"), price = BigDecimal("375.5"), currencyType = "KZT")
+        val saved = slot<MarketQuote>()
+        every { quoteRepository.save(capture(saved)) } answers { firstArg() }
+
+        service().refreshLocalExchange()
+
+        assertEquals(
+            listOf(QuoteKind.STOCK, "HSBK", BigDecimal("374.0"), "KZT", "KASE"),
+            saved.captured.let { listOf(it.kind, it.symbol, it.price, it.currency, it.exchange) },
+        )
+    }
+
+    @Test
+    fun `the last deal is used when KASE gives no closing price`() {
+        every { transactionRepository.findAllTrades() } returns listOf(opening(AccountType.BROKER, "HSBK", currency = "KZT"))
+        every { kaseClient.security("HSBK") } returns KaseSecurity(price = BigDecimal("375.5"), currencyType = "KZT")
+        val saved = slot<MarketQuote>()
+        every { quoteRepository.save(capture(saved)) } answers { firstArg() }
+
+        service().refreshLocalExchange()
+
+        assertEquals(BigDecimal("375.5"), saved.captured.price)
+    }
+
+    @Test
+    fun `KASE is asked without an API Ninjas key`() {
+        every { transactionRepository.findAllTrades() } returns listOf(opening(AccountType.BROKER, "HSBK", currency = "KZT"))
+
+        val report = service(apiKey = "").refresh()
+
+        assertEquals(false to 1, report.configured to report.updated)
+    }
+
+    @Test
+    fun `a coin in a KZT account is not sent to KASE`() {
+        every { transactionRepository.findAllTrades() } returns listOf(opening(AccountType.CRYPTO, "BTC/KZT", currency = "KZT"))
+
+        service().refreshLocalExchange()
+
+        verify(exactly = 0) { kaseClient.security(any()) }
+    }
+
+    @Test
+    fun `a KASE outage is a failed ticker, not an exception`() {
+        every { transactionRepository.findAllTrades() } returns listOf(opening(AccountType.BROKER, "HSBK", currency = "KZT"))
+        every { kaseClient.security(any()) } throws mockk<FeignException>(relaxed = true)
+
+        val report = service().refreshLocalExchange()
+
+        assertEquals(1, report.failed)
+    }
+
+    @Test
+    fun `a KASE outage leaves the previous price in place`() {
+        every { transactionRepository.findAllTrades() } returns listOf(opening(AccountType.BROKER, "HSBK", currency = "KZT"))
+        every { quoteRepository.findAllByKindOrderBySymbol(QuoteKind.STOCK) } returns
+            listOf(kaseQuote("HSBK", fetchedAt = "2026-09-09T13:30:00Z"))
+        every { kaseClient.security(any()) } throws mockk<FeignException>(relaxed = true)
+
+        service().refreshLocalExchange()
+
+        verify(exactly = 0) { quoteRepository.save(any<MarketQuote>()) }
+    }
+
+    @Test
+    fun `one ticker KASE does not know does not stop the others`() {
+        every { transactionRepository.findAllTrades() } returns
+            listOf(
+                opening(AccountType.BROKER, "GONE", currency = "KZT"),
+                opening(AccountType.BROKER, "HSBK", currency = "KZT"),
+            )
+        every { kaseClient.security("GONE") } throws mockk<FeignException>(relaxed = true)
+
+        val report = service().refreshLocalExchange()
+
+        assertEquals(1 to 1, report.failed to report.updated)
+    }
+
+    @Test
+    fun `a KASE answer without a price is a failure, not a quote`() {
+        every { transactionRepository.findAllTrades() } returns listOf(opening(AccountType.BROKER, "HSBK", currency = "KZT"))
+        every { kaseClient.security("HSBK") } returns KaseSecurity()
+
+        val report = service().refreshLocalExchange()
+
+        assertEquals(1, report.failed)
+    }
+
+    @Test
+    fun `an ordinary refresh does not ask KASE again for a ticker fetched today`() {
+        every { transactionRepository.findAllTrades() } returns listOf(opening(AccountType.BROKER, "HSBK", currency = "KZT"))
+        every { quoteRepository.findAllByKindOrderBySymbol(QuoteKind.STOCK) } returns
+            listOf(kaseQuote("HSBK", fetchedAt = "2026-09-10T04:00:00Z"))
+
+        val report = service().refresh()
+
+        assertEquals(1, report.upToDate)
+        verify(exactly = 0) { kaseClient.security(any()) }
+    }
+
+    @Test
+    fun `the after-close run replaces a price fetched earlier the same day`() {
+        every { transactionRepository.findAllTrades() } returns listOf(opening(AccountType.BROKER, "HSBK", currency = "KZT"))
+        every { quoteRepository.findAllByKindOrderBySymbol(QuoteKind.STOCK) } returns
+            listOf(kaseQuote("HSBK", fetchedAt = "2026-09-10T04:00:00Z"))
+
+        val report = service().refreshLocalExchange()
+
+        assertEquals(1, report.updated)
+    }
+
+    @Test
+    fun `the after-close run asks only KASE`() {
+        every { accountRepository.findActiveCurrencies() } returns listOf("USD")
+
+        service().refreshLocalExchange()
+
+        verify(exactly = 0) { client.exchangeRate(any()) }
+    }
+
+    @Test
     fun `a failed call keeps the previous quote and still counts against the cap`() {
         every { accountRepository.findActiveCurrencies() } returns listOf("USD")
         every { client.exchangeRate(any()) } throws mockk<FeignException>(relaxed = true)
@@ -242,6 +370,7 @@ class MarketDataServiceImplTest {
         dailyLimit: Int = 30,
     ) = MarketDataServiceImpl(
         client = client,
+        kaseClient = kaseClient,
         quoteRepository = quoteRepository,
         usageRepository = usageRepository,
         transactionRepository = transactionRepository,
@@ -253,6 +382,18 @@ class MarketDataServiceImplTest {
                 marketData = AppProperties.MarketDataProperties(apiKey = apiKey, dailyLimit = dailyLimit),
             ),
         clock = fixedClock(today),
+    )
+
+    private fun kaseQuote(
+        ticker: String,
+        fetchedAt: String,
+    ) = MarketQuote(
+        kind = QuoteKind.STOCK,
+        symbol = ticker,
+        price = BigDecimal("370"),
+        currency = "KZT",
+        fetchedAt = Instant.parse(fetchedAt),
+        exchange = "KASE",
     )
 
     private fun rate(

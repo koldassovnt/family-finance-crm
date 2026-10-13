@@ -24,6 +24,12 @@ class MarketDataRefreshJob(
         marketDataService.refresh()
     }
 
+    /** KASE's closing prices, once the exchange has closed for the day. */
+    @Scheduled(cron = "\${app.market-data.kase-refresh-cron}", zone = "\${app.timezone}")
+    fun refreshLocalExchange() {
+        marketDataService.refreshLocalExchange()
+    }
+
     /**
      * Also once shortly after every start. A deploy lands after the morning run
      * as often as before it, and the first one left the live instance with no
