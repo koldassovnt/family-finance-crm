@@ -35,7 +35,8 @@ cat > .env <<EOF
 JWT_SECRET=$(openssl rand -hex 32)
 DB_PASSWORD=$(openssl rand -hex 16)
 EOF
-./gradlew bootJar                       # always first: the image copies build/libs/app.jar
+./gradlew bootJar                       # always first: the image copies build/libs/app.jar,
+                                        # and this writes its tag (VERSION) to .env
 docker compose --profile app up -d --build
 ```
 

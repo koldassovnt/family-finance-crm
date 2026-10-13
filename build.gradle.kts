@@ -8,7 +8,13 @@ plugins {
 }
 
 group = "com.familyfinance"
-version = "0.1.0-SNAPSHOT"
+// The VERSION file is the one place the version is written; it is also the app
+// image's tag. Bump it for every deploy: rebuilding a version that already ran
+// overwrites its image, and with it the rollback target.
+version = file("VERSION").readText().trim()
+
+val appImage = "family-finance-app"
+val keptAppImages = 4
 
 repositories {
     mavenCentral()
@@ -71,4 +77,44 @@ tasks.test {
 // guessing between it and the `-plain` jar `build` also writes.
 tasks.bootJar {
     archiveFileName.set("app.jar")
+    // The manifest carries the version, but with a fixed file name nothing
+    // else tells Gradle a bumped version needs a new jar.
+    inputs.property("version", version)
+    finalizedBy(stampComposeVersion)
+}
+
+// Compose tags the app image from VERSION in .env, the only file it reads
+// variables from. Copying it there whenever the jar is built means no compose
+// command needs a `VERSION=$(cat VERSION)` in front of it.
+val stampComposeVersion by tasks.registering {
+    val envFile = layout.projectDirectory.file(".env").asFile
+    val stamp = "VERSION=$version"
+    doLast {
+        val lines = if (envFile.exists()) envFile.readLines() else emptyList()
+        val others = lines.filterNot { it.startsWith("VERSION=") }
+        if (lines != others + stamp) {
+            envFile.writeText((others + stamp).joinToString(separator = "\n", postfix = "\n"))
+        }
+    }
+}
+
+// Keeps the newest four app images — the one running and three to roll back
+// to — and removes the rest. Docker refuses to remove one a container uses.
+val pruneAppImages by tasks.registering {
+    doLast {
+        val listing =
+            ProcessBuilder("docker", "images", appImage, "--format", "{{.Tag}}")
+                .redirectErrorStream(true)
+                .start()
+        val tags =
+            listing.inputStream
+                .bufferedReader()
+                .readLines()
+                .filter(String::isNotBlank)
+        check(listing.waitFor() == 0) { "docker images failed: $tags" }
+        tags.drop(keptAppImages).forEach { tag ->
+            logger.lifecycle("Removing $appImage:$tag")
+            ProcessBuilder("docker", "rmi", "$appImage:$tag").inheritIO().start().waitFor()
+        }
+    }
 }

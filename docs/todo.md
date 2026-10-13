@@ -40,7 +40,9 @@ built on its own if wanted sooner.
 
 ## Versioned compose images
 
-Spec'd under Non-Functional Requirements in
-`00-architecture-and-foundations.md`, not started: every compose service gets
-an explicit image version tag, so the running version is visible and a bad
-upgrade can be rolled back.
+Built in this repo on 2026-10-13 (spec: Non-Functional Requirements in
+`00-architecture-and-foundations.md`; steps: "Upgrading" and "Rolling back" in
+`running-the-service.md`).
+
+Still open: **the frontend repo's image** follows the same rule and is still
+built as `family-finance-crm-front-web:latest`.

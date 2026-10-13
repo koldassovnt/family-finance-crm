@@ -21,7 +21,10 @@ build, which the production host cannot reliably reach.
 
 **Always rebuild the jar before `--build`.** The image copies whatever
 `build/libs/app.jar` holds, so `docker compose ... up -d --build` alone
-repackages the old jar and runs stale code without complaint. On Windows,
+repackages the old jar. The image build catches that only when the version
+changed in between; the same version with newer code is packaged stale
+without complaint. `bootJar` also writes the image tag, `VERSION`, into
+`.env`, and compose refuses to start the app without it. On Windows,
 `gradlew.bat bootJar` from PowerShell or `./gradlew bootJar` from Git Bash.
 
 ---
@@ -255,17 +258,51 @@ the code than you are running fails loudly there rather than half-working.
 
 ### 7. Upgrading
 
+Every deploy gets its own version: raise the number in the `VERSION` file
+first (plain `MAJOR.MINOR.PATCH`, as in `1.0.1`). The app image is tagged
+with it, `family-finance-app:<version>`, and rebuilding a version that already
+ran overwrites the image you would roll back to.
+
 ```bash
-git pull
+git pull                             # or edit VERSION yourself
 docker compose --profile app exec backup sh /scripts/backup.sh run
-./gradlew build
+./gradlew build                      # also writes VERSION=<version> to .env
 docker compose --profile app up -d --build
+./gradlew pruneAppImages             # keeps the running image and the 3 before it
 ```
+
+`docker compose --profile app ps` shows the version running, in the IMAGE
+column. If the image build stops with `app.jar is not version ...`, the jar
+and `VERSION` disagree: run `./gradlew bootJar` and try again.
 
 Flyway applies any new migrations on startup and the app refuses to start if
 the schema does not match what the code expects (`ddl-auto: validate`), so a
 mismatch is a loud failure rather than silent corruption. Take a dump before
 upgrading anyway.
+
+### 8. Rolling back
+
+The previous three app images stay on the host (`docker images
+family-finance-app`). To go back, set `VERSION` in `.env` to the older tag
+and start it **without** `--build`:
+
+```bash
+# .env: VERSION=1.0.0
+docker compose --profile app up -d
+```
+
+`./gradlew bootJar` writes the current version back into `.env`, so check out
+the matching commit, or fix forward under a new version, before building
+again.
+
+If the upgrade ran a Flyway migration, the older code refuses the newer
+schema: restore the dump taken before the upgrade as well ("A real restore"
+above).
+
+**Postgres** is pinned to an exact version in `compose.yaml`, the same one for
+`postgres` and `backup` so `pg_dump` matches the server. Upgrading it is
+editing both lines; a minor version only needs `up -d`, a major version needs
+a dump, a fresh volume, a restore, and a restore test.
 
 ---
 

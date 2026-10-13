@@ -99,4 +99,7 @@ src/test/kotlin/...
 - Deployment: the jar is built on the host (`./gradlew bootJar`, fixed name
   `build/libs/app.jar`) and the `Dockerfile` only packages it;
   `docker compose --profile app up -d --build` runs it next to Postgres.
+  The image is `family-finance-app:<version>`, the number in the
+  `VERSION` file, which `bootJar` copies into `.env` as `VERSION` —
+  bump it for every deploy.
   Plain `docker compose up -d` starts Postgres alone for local development.

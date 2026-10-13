@@ -1,9 +1,11 @@
 # `docker compose up -d` starts only Postgres, for running the app from the
 # IDE or `./gradlew bootRun`. `docker compose --profile app up -d --build`
 # also builds and runs the application container against it.
+# Third-party images are pinned to an exact version, so an upgrade is an edit
+# here and never a side effect of a pull.
 services:
   postgres:
-    image: postgres:17-alpine
+    image: postgres:17.10-alpine
     container_name: family-finance-postgres
     environment:
       POSTGRES_DB: family_finance
@@ -26,7 +28,14 @@ services:
 
   app:
     profiles: ["app"]
-    build: .
+    # VERSION is the content of the VERSION file; `./gradlew bootJar` copies
+    # it to .env. Rolling back is setting it to an older tag that is
+    # still on the host and `up -d` without `--build`.
+    image: family-finance-app:${VERSION:?run ./gradlew bootJar, which writes VERSION to .env}
+    build:
+      context: .
+      args:
+        VERSION: ${VERSION:?run ./gradlew bootJar, which writes VERSION to .env}
     container_name: family-finance-app
     depends_on:
       postgres:
@@ -53,7 +62,7 @@ services:
   # BACKUP_DIR. See db/backup.sh.
   backup:
     profiles: ["app"]
-    image: postgres:17-alpine
+    image: postgres:17.10-alpine
     container_name: family-finance-backup
     depends_on:
       postgres:
