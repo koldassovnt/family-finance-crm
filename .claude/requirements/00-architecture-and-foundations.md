@@ -89,7 +89,7 @@ Implications, so nothing gets missed when this is built:
 - **Category** — `id, name, owner, parent (self-referencing, for a simple hierarchy), kind (EXPENSE/INCOME), isDeleted, createdAt, updatedAt`. **Categories are per family member**, not a shared household taxonomy — each `Category` gets an `owner: User` FK, same pattern as `Account`. Two family members can each have their own "Groceries" category as separate rows; nothing is deduplicated across users. Both `Account` and `Category` are entirely self-service — each family member creates their own directly in the CRM; nothing is admin-provisioned or auto-seeded.
   - `Budget.category` and `Transaction.category` must belong to the *same owner* as the budget/transaction itself — enforce this ownership check alongside the existing account-ownership checks (`AccountService.getOwnedBy`-style pattern) in every service that touches `Category`.
   - A self-referencing `parent` must also belong to the same owner as its child — enforce in the service layer when creating/updating a category, not just at the DB level.
-- **Transaction** — `id, type (INCOME/EXPENSE/TRANSFER/ADJUSTMENT/TRADE), amount (BigDecimal/NUMERIC(19,4)), currency, exchangeRate (NUMERIC(19,6)), amountKzt (NUMERIC(19,4)), toAmount (BigDecimal?, TRANSFER only), occurredOn, account, toAccount (TRANSFER only), category, note, tradeSide/ticker/quantity/unitPrice (TRADE only — see `phase-5-investments.md`), isDeleted, createdAt, updatedAt`. **`toAmount` handles cross-currency transfers** — see the convention below. **Removed: `isRecurring`, `recurrenceInterval`** — not needed. Ownership is implied transitively through `account.owner`, which is safe given accounts are single-owner.
+- **Transaction** — `id, type (INCOME/EXPENSE/TRANSFER/ADJUSTMENT/TRADE), amount (BigDecimal/NUMERIC(19,4)), currency, exchangeRate (NUMERIC(19,6)), amountKzt (NUMERIC(19,4)), toAmount (BigDecimal?, TRANSFER only), occurredOn, account, toAccount (TRANSFER only), category, note, tradeSide/ticker/quantity/unitPrice (TRADE only — see `phase-5-investments.md`), isFamily (EXPENSE only — see `phase-9-family-purchases.md`), isDeleted, createdAt, updatedAt`. **`toAmount` handles cross-currency transfers** — see the convention below. **Removed: `isRecurring`, `recurrenceInterval`** — not needed. Ownership is implied transitively through `account.owner`, which is safe given accounts are single-owner.
 
 ## Design Decisions & Conventions (already made — don't re-litigate these)
 
@@ -248,8 +248,8 @@ Implications, so nothing gets missed when this is built:
     `backup`, which must stay identical so `pg_dump` matches the server.
     Upgrading Postgres becomes a deliberate edit, not a side effect of a pull;
     a major-version upgrade needs a dump/restore and a restore test.
-  - The **frontend** image (its own repo and compose) follows the same rule;
-    not done there yet.
+  - The **frontend** image (its own repo and compose) follows the same rule:
+    `family-finance-web:<version>`, from that repo's own `VERSION` file.
   - `docs/running-the-service.md` has the upgrade and rollback steps.
 - **Testing:** unit tests are enough for now. Broader integration/end-to-end
   testing is deferred until the React frontend and Telegram bot exist to

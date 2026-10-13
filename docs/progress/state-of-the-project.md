@@ -15,11 +15,12 @@ As of **2026-09-20**. Backend `main` at `29e9ece`; the frontend was at
 | 6 | Net worth and reporting | Transaction export to XLSX built; net worth spec'd, not built (`../todo.md`) |
 | 7 | Topics — a trip's or renovation's transactions as one view | Built |
 | 8 | Sharing a single account/goal/budget/bill/topic with another member, read-only | Built, and built in the frontend too |
+| 9 | Family purchases — an expense marked as common to the household, visible to every member | Built 2026-10-13, **backend only** |
 
 The original Phase 7 (*Automation & Family Access*) was dropped and its number
 reused by topics. Phases 5 and 6 keep theirs.
 
-**Migrations run to `V9`.** V1 initial schema, V2 budgets/goals, V3 transaction
+**Migrations run to `V11`** (V10 market quotes, V11 family purchases). V1 initial schema, V2 budgets/goals, V3 transaction
 exchange rate, V4 budget versions, V5 goal archived + password rotation,
 V6 bills, V7 topics, V8 shares, V9 trades. V9 was applied to the live
 database on 2026-10-08, after an on-demand dump

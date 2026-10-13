@@ -71,13 +71,17 @@ phase doc assumes it. The frontend has its own matching set, in its own repo:
 | `.claude/requirements/phase-5-investments.md`             | built |
 | `.claude/requirements/phase-7-topics.md`                  | built |
 | `.claude/requirements/phase-8-sharing.md`                 | built |
+| `.claude/requirements/phase-9-family-purchases.md`        | built |
 
-**Phases 0/1, 2, 4, 5, 7 and 8 are built.** Phase 7 groups a trip's or a
+**Phases 0/1, 2, 4, 5, 7, 8 and 9 are built.** Phase 7 groups a trip's or a
 renovation's transactions into one view. Phase 8 shares one account, goal,
 budget, bill or topic at a time with another household member, read-only: the
 five list endpoints take `scope=OWN|SHARED|ALL` (defaulting to `OWN`, so
 nothing already built changed), every write path stays owner-only, and no
-shared resource ever contributes to the viewer's own totals.
+shared resource ever contributes to the viewer's own totals. Phase 9 lets an
+expense be marked as a family purchase, which every member then sees in
+`GET /api/v1/family/purchases` — the amount, category, note and who paid,
+never the account.
 
 Phase 3 (Loans & Mortgages) was **dropped** — loans and mortgages are tracked
 as ordinary expense categories, so there was no entity left to spec. The
@@ -110,6 +114,6 @@ endpoints under `/api/v1/`; balances corrected via an `ADJUSTMENT`
 transaction rather than a direct edit; no pagination, date-range bounded
 instead.
 
-**Phases 0/1, 2, 4, 5, 7 and 8 are all built.** Phase 6 is the only one left;
+**Phases 0/1, 2, 4, 5, 7, 8 and 9 are all built.** Phase 6 is the only one left;
 of it, only the transaction export to Excel
 (`GET /api/v1/reports/transactions.xlsx`) is built.

@@ -11,7 +11,10 @@ crypto accounts, with holdings derived from them — and topics (Phase 7), a
 trip's or a renovation's transactions grouped into one view. Phase 8 (sharing
 single resources with other household members as read-only viewers) is built;
 it is the first feature where a bug is a disclosure rather than a wrong
-number, so read its doc before touching any access check. Phase 6 (net worth)
+number, so read its doc before touching any access check. Phase 9 (family
+purchases: an expense marked `isFamily` is visible to every member in one
+family view, without its account) is built and is the second such feature;
+its doc carries the same warning. Phase 6 (net worth)
 is written up but not built, apart from its transaction export to XLSX
 (`/api/v1/reports/transactions.xlsx`), and its doc needs re-reviewing against how
 Phase 5 turned out — don't start it unless asked. Modular monolith; it runs as

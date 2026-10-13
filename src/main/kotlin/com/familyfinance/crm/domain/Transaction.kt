@@ -77,4 +77,11 @@ class Transaction(
     /** Per unit, in the account's currency. */
     @Column(precision = 28, scale = 10)
     var unitPrice: BigDecimal? = null,
+    /**
+     * A purchase common to the household: every member can see it in the
+     * family view, though never which account paid. Only an `EXPENSE` may be
+     * one, and personal is the default — see `phase-9-family-purchases.md`.
+     */
+    @Column(nullable = false)
+    var isFamily: Boolean = false,
 ) : BaseEntity()

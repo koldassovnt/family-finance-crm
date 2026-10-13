@@ -83,6 +83,28 @@ interface TransactionRepository : JpaRepository<Transaction, UUID> {
     ): List<Transaction>
 
     /**
+     * Every member's family purchases in the window — the one query here that
+     * is not scoped to an owner or to a resource someone was given. `isFamily`
+     * is the whole filter, so nothing personal can match. The account's owner
+     * is fetched because the response says who paid.
+     */
+    @Query(
+        """
+        SELECT t FROM Transaction t
+        JOIN FETCH t.account a
+        JOIN FETCH a.owner
+        LEFT JOIN FETCH t.category
+        WHERE t.isFamily = true
+          AND t.occurredOn BETWEEN :from AND :to
+        ORDER BY t.occurredOn DESC, t.createdAt DESC
+        """,
+    )
+    fun findFamilyPurchases(
+        from: LocalDate,
+        to: LocalDate,
+    ): List<Transaction>
+
+    /**
      * Fetches the associations the response needs up front: with
      * `open-in-view: false` the session is gone by the time the controller maps
      * the entity, so a lazy proxy there is a 500.

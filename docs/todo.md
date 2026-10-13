@@ -1,51 +1,28 @@
 # To do
 
-Ideas and deferred work that are wanted but not started, or started and not
-finished. The phase docs in `.claude/requirements/` say what each feature
-should be; this file only says what is waiting and on what.
+Only what is waiting, and on what. The phase docs in `.claude/requirements/`
+say what each feature should be; finished work is removed from here.
 
-## Market data — prices API Ninjas cannot give
+## KASE prices from the owner's own service
 
-Market data is built and was run with the real key on 2026-10-09 (design and
-the full results table: `phase-5-investments.md`, "Market data"). Rates,
-US-listed stocks and ETFs, and coins are priced. TON is priced under its new
-name: record it as `GRAM/USD`, or rename existing trades with
-`POST /api/v1/accounts/{id}/holdings/rename`.
+API Ninjas does not cover KASE, so the KZT broker account's holdings show
+purchase cost only. Decided 2026-10-13: the owner will write a separate
+service that takes each ticker's end-of-day price from the KASE website at
+18:00 Almaty time, and this backend will read prices from it.
 
-**Not available from API Ninjas at all: everything in the KZT broker account**
-(`KZTO`, `HSBK`, …) — KASE is not covered. `HSBK.IL` exists but is the London
-GDR in USD, a different instrument at a different price. The owner decided on
-2026-10-09 to skip KASE: those holdings show purchase cost only and are
-counted in `unpriced` on the totals. If that ever becomes annoying, a
-hand-entered price per ticker is the smallest fix.
-
-Still open:
-- **The API Ninjas attribution** on the Investments page, which the free plan
-  requires; the frontend session has been asked. (The plan's "data caching
-  not allowed" line was settled by the owner on 2026-10-09: fine for a private
-  household tool.)
-- **Pre-filling the KZT rate** on a new transaction from the stored rate
-  (`GET /api/v1/market-data/rates`), which is typed by hand today.
+**Waiting on:** that service existing, and its API (address, how a ticker is
+asked for, what it returns).
 
 ## Phase 6 — net worth
 
-**Waiting on:** the owner's go-ahead, and a decision on how unpriced holdings
-(above) count toward net worth — at cost, or left out. Net worth
-needs today's value of the investments and today's rate for every non-KZT
-account; both now have a source. The spec in `phase-6-net-worth.md` predates
-how Phase 5 was built and must be re-reviewed before any of it is implemented.
+**Waiting on:** the owner's go-ahead, and KASE prices (above) so every holding
+has a value. The spec in `phase-6-net-worth.md` predates how Phase 5 was built
+and must be re-reviewed before any of it is implemented.
 
-Its transaction export to XLSX did not depend on any of this and was built on
-2026-10-13: `GET /api/v1/reports/transactions.xlsx`, spec'd under "Transaction
-export" in the same doc. Still open: **a download button in the frontend**,
-which has to fetch the file with the bearer token and save the blob — a plain
-link cannot send the token.
+## Family purchases — the frontend
 
-## Versioned compose images
+The backend is built (`phase-9-family-purchases.md`): an expense can be marked
+`isFamily`, and `GET /api/v1/family/purchases` shows every member's.
 
-Built in this repo on 2026-10-13 (spec: Non-Functional Requirements in
-`00-architecture-and-foundations.md`; steps: "Upgrading" and "Rolling back" in
-`running-the-service.md`).
-
-Still open: **the frontend repo's image** follows the same rule and is still
-built as `family-finance-crm-front-web:latest`.
+**Waiting on:** the frontend — a «Семейная покупка» checkbox on the expense
+form and a «Семейные покупки» page. Until then nobody can mark or see one.

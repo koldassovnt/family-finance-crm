@@ -116,6 +116,21 @@ fun Transaction.toResponse() =
         ticker = ticker,
         quantity = quantity,
         unitPrice = unitPrice,
+        isFamily = isFamily,
+    )
+
+/** What the household sees of a family purchase; needs the account's owner fetched. */
+fun Transaction.toFamilyPurchase(reader: User) =
+    FamilyPurchaseResponse(
+        id = requiredId(),
+        amount = amount,
+        currency = currency,
+        amountKzt = amountKzt,
+        occurredOn = occurredOn,
+        categoryName = category?.name,
+        note = note,
+        paidBy = account.owner.toRef(),
+        isMine = account.owner == reader,
     )
 
 fun ValuedHolding.toResponse() =

@@ -32,6 +32,7 @@ import java.time.LocalDate
 import java.util.Optional
 import java.util.UUID
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -285,6 +286,102 @@ class TransactionServiceImplTest {
         assertEquals(BigDecimal("7200.0000"), updated.amountKzt)
         // The account is in USD, so its balance never moved.
         assertEquals(BigDecimal("985"), usd.balance)
+    }
+
+    @Test
+    fun `an expense is personal unless it is marked as a family purchase`() {
+        val account = account(owner)
+        every { accountService.getOwnedBy(account.idValue, owner) } returns account
+
+        val transaction = service.create(owner, request(TransactionType.EXPENSE, "30", account.idValue))
+
+        assertFalse(transaction.isFamily)
+    }
+
+    @Test
+    fun `an expense can be recorded as a family purchase`() {
+        val account = account(owner)
+        every { accountService.getOwnedBy(account.idValue, owner) } returns account
+
+        val transaction =
+            service.create(owner, request(TransactionType.EXPENSE, "30", account.idValue, isFamily = true))
+
+        assertTrue(transaction.isFamily)
+    }
+
+    @Test
+    fun `rejects recording income as a family purchase`() {
+        val account = account(owner)
+        every { accountService.getOwnedBy(account.idValue, owner) } returns account
+
+        assertThrows<ValidationException> {
+            service.create(owner, request(TransactionType.INCOME, "30", account.idValue, isFamily = true))
+        }
+    }
+
+    @Test
+    fun `rejects recording a transfer as a family purchase`() {
+        val source = account(owner)
+        val destination = account(owner)
+        every { accountService.getOwnedBy(source.idValue, owner) } returns source
+        every { accountService.getOwnedBy(destination.idValue, owner) } returns destination
+
+        assertThrows<ValidationException> {
+            service.create(
+                owner,
+                request(TransactionType.TRANSFER, "30", source.idValue, toAccountId = destination.id, isFamily = true),
+            )
+        }
+    }
+
+    @Test
+    fun `an expense can be marked as a family purchase afterwards`() {
+        val account = account(owner)
+        every { accountService.getOwnedBy(account.idValue, owner) } returns account
+        val transaction = service.create(owner, request(TransactionType.EXPENSE, "30", account.idValue))
+        every { transactionRepository.findDetailedById(transaction.idValue) } returns transaction
+
+        val updated = service.update(transaction.idValue, owner, UpdateTransactionRequest(isFamily = true))
+
+        assertTrue(updated.isFamily)
+    }
+
+    @Test
+    fun `a family purchase can be taken back to personal`() {
+        val account = account(owner)
+        every { accountService.getOwnedBy(account.idValue, owner) } returns account
+        val transaction =
+            service.create(owner, request(TransactionType.EXPENSE, "30", account.idValue, isFamily = true))
+        every { transactionRepository.findDetailedById(transaction.idValue) } returns transaction
+
+        val updated = service.update(transaction.idValue, owner, UpdateTransactionRequest(isFamily = false))
+
+        assertFalse(updated.isFamily)
+    }
+
+    @Test
+    fun `rejects marking income as a family purchase afterwards`() {
+        val account = account(owner)
+        every { accountService.getOwnedBy(account.idValue, owner) } returns account
+        val transaction = service.create(owner, request(TransactionType.INCOME, "30", account.idValue))
+        every { transactionRepository.findDetailedById(transaction.idValue) } returns transaction
+
+        assertThrows<ValidationException> {
+            service.update(transaction.idValue, owner, UpdateTransactionRequest(isFamily = true))
+        }
+    }
+
+    @Test
+    fun `another member cannot mark someone else's expense as a family purchase`() {
+        val account = account(owner)
+        every { accountService.getOwnedBy(account.idValue, owner) } returns account
+        val transaction = service.create(owner, request(TransactionType.EXPENSE, "30", account.idValue))
+        every { transactionRepository.findDetailedById(transaction.idValue) } returns transaction
+        val other = user(email = "other@example.com")
+
+        assertThrows<NotFoundException> {
+            service.update(transaction.idValue, other, UpdateTransactionRequest(isFamily = true))
+        }
     }
 
     @Test
@@ -769,6 +866,7 @@ class TransactionServiceImplTest {
         topicId: UUID? = null,
         occurredOn: LocalDate? = null,
         exchangeRate: BigDecimal? = null,
+        isFamily: Boolean = false,
     ) = CreateTransactionRequest(
         type = type,
         amount = BigDecimal(amount),
@@ -779,5 +877,6 @@ class TransactionServiceImplTest {
         topicId = topicId,
         occurredOn = occurredOn,
         exchangeRate = exchangeRate,
+        isFamily = isFamily,
     )
 }

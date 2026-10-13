@@ -44,6 +44,8 @@ data class CreateTransactionRequest(
     val quantity: BigDecimal? = null,
     /** `TRADE` only, and required there: the price of one unit in the account's currency. */
     val unitPrice: BigDecimal? = null,
+    /** `EXPENSE` only: publishes the purchase to every member's family view. Personal by default. */
+    val isFamily: Boolean = false,
 )
 
 /**
@@ -75,6 +77,8 @@ data class UpdateTransactionRequest(
     val quantity: BigDecimal? = null,
     /** `TRADE` only; re-derives the amount and re-applies the balance difference. */
     val unitPrice: BigDecimal? = null,
+    /** `EXPENSE` only: `true` publishes it to the family view, `false` takes it back. */
+    val isFamily: Boolean? = null,
 )
 
 data class TransactionResponse(
@@ -98,6 +102,8 @@ data class TransactionResponse(
     val ticker: String?,
     val quantity: BigDecimal?,
     val unitPrice: BigDecimal?,
+    /** Whether every member sees it in the family view; only ever true on an `EXPENSE`. */
+    val isFamily: Boolean,
 )
 
 /**
