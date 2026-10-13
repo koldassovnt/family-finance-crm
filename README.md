@@ -110,4 +110,6 @@ endpoints under `/api/v1/`; balances corrected via an `ADJUSTMENT`
 transaction rather than a direct edit; no pagination, date-range bounded
 instead.
 
-**Phases 0/1, 2, 4, 5, 7 and 8 are all built.** Phase 6 is the only one left.
+**Phases 0/1, 2, 4, 5, 7 and 8 are all built.** Phase 6 is the only one left;
+of it, only the transaction export to Excel
+(`GET /api/v1/reports/transactions.xlsx`) is built.

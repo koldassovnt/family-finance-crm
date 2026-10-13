@@ -12,7 +12,7 @@ As of **2026-09-20**. Backend `main` at `29e9ece`; the frontend was at
 | 3 | Loans & mortgages | **Dropped** — tracked as ordinary expense categories |
 | 4 | Bills and the due-date calendar | Built |
 | 5 | Investments — trades on broker and crypto accounts, holdings at cost | Built 2026-10-08, **backend only** |
-| 6 | Net worth and reporting | Spec'd, not built; waiting on market-data APIs (`../todo.md`) |
+| 6 | Net worth and reporting | Transaction export to XLSX built; net worth spec'd, not built (`../todo.md`) |
 | 7 | Topics — a trip's or renovation's transactions as one view | Built |
 | 8 | Sharing a single account/goal/budget/bill/topic with another member, read-only | Built, and built in the frontend too |
 

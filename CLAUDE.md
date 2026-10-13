@@ -12,7 +12,8 @@ trip's or a renovation's transactions grouped into one view. Phase 8 (sharing
 single resources with other household members as read-only viewers) is built;
 it is the first feature where a bug is a disclosure rather than a wrong
 number, so read its doc before touching any access check. Phase 6 (net worth)
-is written up but not built, and its doc needs re-reviewing against how
+is written up but not built, apart from its transaction export to XLSX
+(`/api/v1/reports/transactions.xlsx`), and its doc needs re-reviewing against how
 Phase 5 turned out — don't start it unless asked. Modular monolith; it runs as
 a Docker container on a personal machine behind the home network. Its one
 outbound dependency is the API Ninjas price and exchange-rate API, optional

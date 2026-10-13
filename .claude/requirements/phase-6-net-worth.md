@@ -1,7 +1,8 @@
 # Phase 6 — Net Worth & Reporting
 
-Status: spec'd, not built. Depends on Phase 0/1 (accounts) and Phase 5
-(holdings).
+Status: net worth is spec'd, not built; it depends on Phase 0/1 (accounts) and
+Phase 5 (holdings). The **transaction export is built** (2026-10-13) — it
+depends on neither; see "Transaction export" at the end.
 
 **Re-review before building (noted 2026-10-08).** Phase 5 was built differently
 from the draft this document assumed: there are no instruments, no price
@@ -67,13 +68,46 @@ describes. Resolve this when Phase 5 is actually built, not before.
 | GET    | `/api/v1/net-worth/current`       | today's figure, computed live (not from a snapshot)  |
 | GET    | `/api/v1/net-worth/history`       | snapshot series (`from`/`to`) for the trend chart    |
 | POST   | `/api/v1/net-worth/snapshot`      | force a snapshot now                                 |
-| GET    | `/api/v1/reports/transactions.xlsx`| transaction export (date range, optional account)   |
+| GET    | `/api/v1/reports/transactions.xlsx`| transaction export — built, see below               |
+
+## Transaction export (built 2026-10-13)
+
+`GET /api/v1/reports/transactions.xlsx?from=&to=` returns the caller's
+transactions as an Excel file, as an attachment named
+`transactions_<from>_<to>.xlsx`.
+
+- **It is the transaction list as a file.** Same parameters as
+  `GET /api/v1/transactions` — `from` and `to` required, at most one year,
+  optional `accountId`, `categoryId`, `topicId` — the same rows in the same
+  order (newest first), and the same 400/404. It is implemented on top of that
+  list, so the two cannot drift. The original spec named only the account
+  filter; the other two came free and let a filtered view be exported as seen.
+- **Own transactions only.** A viewer of a shared account reads its history
+  through `GET /api/v1/accounts/{id}/transactions`; the export does not reach
+  shared resources, so it adds nothing to what Phase 8 discloses.
+- **One sheet, one row per transaction:** Date, Type, Account, To account,
+  Category, Topic, Amount, Currency, Rate to KZT, Amount KZT, To amount,
+  To currency, Trade side, Ticker, Quantity, Unit price, Note. Accounts,
+  categories and topics appear by name. A value a transaction does not have is
+  an empty cell, never a zero.
+- **Amounts are as the ledger stores them** — positive, with Type (and Trade
+  side) saying which way the money moved; only an `ADJUSTMENT` is signed.
+  Nothing is totalled in the file: Amount mixes currencies down the column,
+  and Amount KZT is the one that can be summed.
+- Dates and numbers are real date and number cells; text is text, so a note
+  beginning with `=` is not a formula. The header row is frozen and filterable.
 
 **XLSX, not CSV or PDF.** Excel output keeps number and date formatting
 intact — a CSV of `BigDecimal` amounts loses the formatting and invites
 locale trouble with decimal separators, which matters here since KZT amounts
-run large. Generate with **Apache POI** (`org.apache.poi:poi-ooxml`), streamed
-straight to the response rather than written to disk first.
+run large. Generated with **Apache POI** (`org.apache.poi:poi-ooxml`), built
+in memory and written to the response, never to disk — a year of one
+household's ledger is small, and POI's streaming mode would spool to temp
+files. Column widths are fixed because POI's auto-sizing needs fonts the
+Alpine JRE image does not have.
+
+An error is JSON even when the request accepts only a spreadsheet; the
+exception handler presets the content type for that reason.
 
 PDF stays out: it needs a template engine and layout work for something a
 spreadsheet handles better. Add it later only if a genuinely printable report

@@ -38,6 +38,9 @@ dependencies {
 
     implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.9.1")
 
+    // Writes the transaction export; see "XLSX, not CSV or PDF" in the Phase 6 doc.
+    implementation("org.apache.poi:poi-ooxml:5.5.1")
+
     // The declarative client for the market-data API; versioned by the BOM below.
     implementation("org.springframework.cloud:spring-cloud-starter-openfeign")
 

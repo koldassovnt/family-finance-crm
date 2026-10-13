@@ -3,6 +3,7 @@ package com.familyfinance.crm.exception
 import org.junit.jupiter.api.Test
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.http.HttpStatus
+import org.springframework.http.MediaType
 import kotlin.test.assertEquals
 
 class GlobalExceptionHandlerTest {
@@ -29,6 +30,15 @@ class GlobalExceptionHandlerTest {
             )
 
         assertEquals("That change conflicts with the current state; try again", response.body?.message)
+    }
+
+    @Test
+    fun `an error is declared as JSON so it is not negotiated against the request's Accept`() {
+        // A failed .xlsx download accepts only a spreadsheet; without a preset
+        // type the error could not be written and became a bare 500.
+        val response = handler.handleApi(NotFoundException("Account was not found"))
+
+        assertEquals(MediaType.APPLICATION_JSON, response.headers.contentType)
     }
 
     @Test

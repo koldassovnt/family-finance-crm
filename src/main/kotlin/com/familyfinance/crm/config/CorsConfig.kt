@@ -17,6 +17,8 @@ class CorsConfig : WebMvcConfigurer {
             .allowedOriginPatterns("*")
             .allowedMethods("GET", "POST", "PATCH", "DELETE", "OPTIONS")
             .allowedHeaders("*")
+            // Lets a cross-origin page read the file name of an export.
+            .exposedHeaders("Content-Disposition")
             .allowCredentials(false)
     }
 }

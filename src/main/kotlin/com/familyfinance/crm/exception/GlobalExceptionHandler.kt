@@ -4,6 +4,7 @@ import jakarta.validation.ConstraintViolationException
 import org.slf4j.LoggerFactory
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.http.HttpStatus
+import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.http.converter.HttpMessageNotReadableException
 import org.springframework.security.access.AccessDeniedException
@@ -22,9 +23,7 @@ class GlobalExceptionHandler {
 
     @ExceptionHandler(ApiException::class)
     fun handleApi(ex: ApiException): ResponseEntity<ErrorResponse> =
-        ResponseEntity
-            .status(ex.status)
-            .body(ErrorResponse(code = ex.code, message = ex.message, fieldErrors = ex.fieldErrors))
+        respond(ex.status, ErrorResponse(code = ex.code, message = ex.message, fieldErrors = ex.fieldErrors))
 
     @ExceptionHandler(MethodArgumentNotValidException::class)
     fun handleBeanValidation(ex: MethodArgumentNotValidException): ResponseEntity<ErrorResponse> {
@@ -72,21 +71,15 @@ class GlobalExceptionHandler {
 
     @ExceptionHandler(AuthenticationException::class)
     fun handleAuthentication(ex: AuthenticationException): ResponseEntity<ErrorResponse> =
-        ResponseEntity
-            .status(HttpStatus.UNAUTHORIZED)
-            .body(ErrorResponse(ErrorCode.UNAUTHENTICATED, "Authentication is required"))
+        respond(HttpStatus.UNAUTHORIZED, ErrorResponse(ErrorCode.UNAUTHENTICATED, "Authentication is required"))
 
     @ExceptionHandler(AccessDeniedException::class)
     fun handleAccessDenied(ex: AccessDeniedException): ResponseEntity<ErrorResponse> =
-        ResponseEntity
-            .status(HttpStatus.FORBIDDEN)
-            .body(ErrorResponse(ErrorCode.FORBIDDEN, "You are not allowed to perform this action"))
+        respond(HttpStatus.FORBIDDEN, ErrorResponse(ErrorCode.FORBIDDEN, "You are not allowed to perform this action"))
 
     @ExceptionHandler(NoResourceFoundException::class)
     fun handleNoResource(ex: NoResourceFoundException): ResponseEntity<ErrorResponse> =
-        ResponseEntity
-            .status(HttpStatus.NOT_FOUND)
-            .body(ErrorResponse(ErrorCode.NOT_FOUND, "No endpoint at ${ex.resourcePath}"))
+        respond(HttpStatus.NOT_FOUND, ErrorResponse(ErrorCode.NOT_FOUND, "No endpoint at ${ex.resourcePath}"))
 
     /**
      * A unique index losing a race — two concurrent requests both inserting the
@@ -96,22 +89,34 @@ class GlobalExceptionHandler {
     @ExceptionHandler(DataIntegrityViolationException::class)
     fun handleDataIntegrityViolation(ex: DataIntegrityViolationException): ResponseEntity<ErrorResponse> {
         log.warn("Constraint violation", ex)
-        return ResponseEntity
-            .status(HttpStatus.CONFLICT)
-            .body(ErrorResponse(ErrorCode.CONFLICT, "That change conflicts with the current state; try again"))
+        return respond(
+            HttpStatus.CONFLICT,
+            ErrorResponse(ErrorCode.CONFLICT, "That change conflicts with the current state; try again"),
+        )
     }
 
     @ExceptionHandler(Exception::class)
     fun handleUnexpected(ex: Exception): ResponseEntity<ErrorResponse> {
         log.error("Unhandled exception", ex)
-        return ResponseEntity
-            .status(HttpStatus.INTERNAL_SERVER_ERROR)
-            .body(ErrorResponse(ErrorCode.INTERNAL_ERROR, "Something went wrong"))
+        return respond(
+            HttpStatus.INTERNAL_SERVER_ERROR,
+            ErrorResponse(ErrorCode.INTERNAL_ERROR, "Something went wrong"),
+        )
     }
 
     private fun badRequest(
         code: ErrorCode,
         message: String,
         fieldErrors: Map<String, String>,
-    ): ResponseEntity<ErrorResponse> = ResponseEntity.badRequest().body(ErrorResponse(code, message, fieldErrors))
+    ): ResponseEntity<ErrorResponse> = respond(HttpStatus.BAD_REQUEST, ErrorResponse(code, message, fieldErrors))
+
+    /**
+     * An error is JSON whatever the request's `Accept` asked for. Left to
+     * negotiation, a failed file download — whose client accepts only the
+     * file's type — could not be answered at all and surfaced as a bare 500.
+     */
+    private fun respond(
+        status: HttpStatus,
+        body: ErrorResponse,
+    ): ResponseEntity<ErrorResponse> = ResponseEntity.status(status).contentType(MediaType.APPLICATION_JSON).body(body)
 }

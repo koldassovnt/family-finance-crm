@@ -35,8 +35,11 @@ needs today's value of the investments and today's rate for every non-KZT
 account; both now have a source. The spec in `phase-6-net-worth.md` predates
 how Phase 5 was built and must be re-reviewed before any of it is implemented.
 
-Its transaction export to XLSX does not depend on any of this and could be
-built on its own if wanted sooner.
+Its transaction export to XLSX did not depend on any of this and was built on
+2026-10-13: `GET /api/v1/reports/transactions.xlsx`, spec'd under "Transaction
+export" in the same doc. Still open: **a download button in the frontend**,
+which has to fetch the file with the bearer token and save the blob — a plain
+link cannot send the token.
 
 ## Versioned compose images
 

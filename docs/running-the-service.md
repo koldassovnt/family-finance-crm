@@ -229,6 +229,15 @@ docker compose --profile app ps backup
 docker compose --profile app logs backup
 ```
 
+**From Git Bash on Windows**, put `MSYS_NO_PATHCONV=1` in front of any
+`docker compose ... exec` that names a path inside the container. Git Bash
+otherwise rewrites `/scripts/backup.sh` into `C:/Program Files/Git/scripts/backup.sh`
+and the command fails with `can't open`. PowerShell needs nothing.
+
+```bash
+MSYS_NO_PATHCONV=1 docker compose --profile app exec backup sh /scripts/backup.sh run
+```
+
 **Test a restore** into a throwaway database, never over the live one — once
 after setup, and after every Postgres major-version upgrade. An untested
 backup is a guess:
