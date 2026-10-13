@@ -47,7 +47,6 @@ class TransactionServiceImpl(
                 "cannot be created directly — use POST /api/v1/accounts/{id}/reconcile",
             )
         }
-        requireFamilyAllowed(request.isFamily, type)
         val accountId = request.accountId ?: throw invalidField("accountId", "is required")
         // A trade's amount is derived from its quantity and price, never supplied.
         val amount = if (type == TransactionType.TRADE) null else requirePositive(request.amount, "amount")
@@ -148,10 +147,6 @@ class TransactionServiceImpl(
             transaction.topic = newTopic?.let { topicService.getOwnedBy(it, owner) }
         }
         request.note?.let { transaction.note = it.orElse(null)?.let({ requireMaxLength(it, "note") }) }
-        request.isFamily?.let { family ->
-            requireFamilyAllowed(family, transaction.type)
-            transaction.isFamily = family
-        }
         if (request.ticker != null || request.quantity != null) requireNothingOversold(transaction.account)
         return transaction
     }
@@ -299,7 +294,6 @@ class TransactionServiceImpl(
             category = request.categoryId?.let { resolveCategory(it, type, owner) },
             topic = request.topicId?.let { topicService.getOwnedBy(it, owner) },
             note = request.note?.let({ requireMaxLength(it, "note") }),
-            isFamily = request.isFamily,
         )
     }
 
@@ -653,17 +647,6 @@ private fun rejectTradeFields(
         listOf("tradeSide" to tradeSide, "ticker" to ticker, "quantity" to quantity, "unitPrice" to unitPrice)
             .firstOrNull { it.second != null }
     if (present != null) throw invalidField(present.first, "is only valid for a TRADE")
-}
-
-/**
- * Marking a transaction as a family purchase shows it to the whole household,
- * and only a purchase is one: income, a transfer or a trade stays its owner's.
- */
-private fun requireFamilyAllowed(
-    isFamily: Boolean,
-    type: TransactionType,
-) {
-    if (isFamily && type != TransactionType.EXPENSE) throw invalidField("isFamily", "is only valid for an EXPENSE")
 }
 
 private fun toKzt(

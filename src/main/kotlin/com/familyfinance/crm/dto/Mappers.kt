@@ -5,6 +5,7 @@ import com.familyfinance.crm.domain.Bank
 import com.familyfinance.crm.domain.BaseEntity
 import com.familyfinance.crm.domain.Category
 import com.familyfinance.crm.domain.MarketQuote
+import com.familyfinance.crm.domain.PlannedPurchase
 import com.familyfinance.crm.domain.Share
 import com.familyfinance.crm.domain.Topic
 import com.familyfinance.crm.domain.Transaction
@@ -116,21 +117,6 @@ fun Transaction.toResponse() =
         ticker = ticker,
         quantity = quantity,
         unitPrice = unitPrice,
-        isFamily = isFamily,
-    )
-
-/** What the household sees of a family purchase; needs the account's owner fetched. */
-fun Transaction.toFamilyPurchase(reader: User) =
-    FamilyPurchaseResponse(
-        id = requiredId(),
-        amount = amount,
-        currency = currency,
-        amountKzt = amountKzt,
-        occurredOn = occurredOn,
-        categoryName = category?.name,
-        note = note,
-        paidBy = account.owner.toRef(),
-        isMine = account.owner == reader,
     )
 
 fun ValuedHolding.toResponse() =
@@ -252,3 +238,13 @@ fun CategoryTotal.toSummary() =
 
 /** Any entity reaching the API boundary has been persisted, so its id is set. */
 fun BaseEntity.requiredId(): UUID = checkNotNull(id) { "Entity has not been persisted yet" }
+
+fun PlannedPurchase.toResponse() =
+    PlannedPurchaseResponse(
+        id = requiredId(),
+        name = name,
+        isFamily = isFamily,
+        isBought = isBought,
+        addedBy = owner.toRef(),
+        createdAt = createdAt,
+    )

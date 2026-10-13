@@ -104,8 +104,6 @@ private val COLUMNS =
         Column("To account", widthInChars = 24) { it.toAccount?.name },
         Column("Category", widthInChars = 24) { it.category?.name },
         Column("Topic", widthInChars = 24) { it.topic?.name },
-        // A family purchase, visible to the whole household; empty for a personal one.
-        Column("Family", widthInChars = 10) { transaction -> "yes".takeIf { transaction.isFamily } },
         Column("Amount", widthInChars = 16, format = CellFormat.MONEY) { it.amount },
         Column("Currency", widthInChars = 10) { it.currency },
         Column("Rate to $BASE_CURRENCY", widthInChars = 14, format = CellFormat.PRECISE) { it.exchangeRate },

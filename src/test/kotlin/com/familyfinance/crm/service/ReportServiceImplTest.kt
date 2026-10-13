@@ -50,7 +50,6 @@ class ReportServiceImplTest {
                 "To account",
                 "Category",
                 "Topic",
-                "Family",
                 "Amount",
                 "Currency",
                 "Rate to KZT",
@@ -96,13 +95,6 @@ class ReportServiceImplTest {
             listOf("EXPENSE", "Main", "Groceries", "Malaysia trip", "Lunch"),
             listOf("Type", "Account", "Category", "Topic", "Note").map { sheet.text(1, it) },
         )
-    }
-
-    @Test
-    fun `a family purchase is marked in the Family column and a personal one is not`() {
-        val sheet = export(transaction(isFamily = true), transaction())
-
-        assertEquals(listOf("yes", null), listOf(sheet.text(1, "Family"), sheet.text(2, "Family")))
     }
 
     @Test
@@ -241,7 +233,6 @@ class ReportServiceImplTest {
         ticker: String? = null,
         quantity: String? = null,
         unitPrice: String? = null,
-        isFamily: Boolean = false,
     ) = Transaction(
         type = type,
         amount = BigDecimal(amount),
@@ -259,7 +250,6 @@ class ReportServiceImplTest {
         ticker = ticker,
         quantity = quantity?.let(::BigDecimal),
         unitPrice = unitPrice?.let(::BigDecimal),
-        isFamily = isFamily,
     ).withId()
 }
 

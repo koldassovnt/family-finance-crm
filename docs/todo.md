@@ -19,10 +19,10 @@ asked for, what it returns).
 has a value. The spec in `phase-6-net-worth.md` predates how Phase 5 was built
 and must be re-reviewed before any of it is implemented.
 
-## Family purchases — the frontend
+## Planned purchases — the frontend
 
-The backend is built (`phase-9-family-purchases.md`): an expense can be marked
-`isFamily`, and `GET /api/v1/family/purchases` shows every member's.
+The backend is built (`phase-9-planned-purchases.md`): a list of things to
+buy, personal or family, each marked bought or not, at
+`/api/v1/planned-purchases`.
 
-**Waiting on:** the frontend — a «Семейная покупка» checkbox on the expense
-form and a «Семейные покупки» page. Until then nobody can mark or see one.
+**Waiting on:** the frontend page. Until then nobody can use it.

@@ -71,17 +71,16 @@ phase doc assumes it. The frontend has its own matching set, in its own repo:
 | `.claude/requirements/phase-5-investments.md`             | built |
 | `.claude/requirements/phase-7-topics.md`                  | built |
 | `.claude/requirements/phase-8-sharing.md`                 | built |
-| `.claude/requirements/phase-9-family-purchases.md`        | built |
+| `.claude/requirements/phase-9-planned-purchases.md`       | built |
 
 **Phases 0/1, 2, 4, 5, 7, 8 and 9 are built.** Phase 7 groups a trip's or a
 renovation's transactions into one view. Phase 8 shares one account, goal,
 budget, bill or topic at a time with another household member, read-only: the
 five list endpoints take `scope=OWN|SHARED|ALL` (defaulting to `OWN`, so
 nothing already built changed), every write path stays owner-only, and no
-shared resource ever contributes to the viewer's own totals. Phase 9 lets an
-expense be marked as a family purchase, which every member then sees in
-`GET /api/v1/family/purchases` — the amount, category, note and who paid,
-never the account.
+shared resource ever contributes to the viewer's own totals. Phase 9 is a list
+of planned purchases, personal or family, that can be marked bought; it is
+not connected to the ledger.
 
 Phase 3 (Loans & Mortgages) was **dropped** — loans and mortgages are tracked
 as ordinary expense categories, so there was no entity left to spec. The
