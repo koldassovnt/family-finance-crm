@@ -52,6 +52,8 @@ services:
       OWNER_PASSWORD: ${OWNER_PASSWORD:-}
       # Optional: prices and exchange rates from API Ninjas. Unset = switched off.
       API_NINJAS_KEY: ${API_NINJAS_KEY:-}
+      # Optional: the Telegram bot's shared secret. Unset = the bot is refused.
+      BOT_API_TOKEN: ${BOT_API_TOKEN:-}
     ports:
       - "${APP_PORT:-8080}:8080"
     restart: unless-stopped

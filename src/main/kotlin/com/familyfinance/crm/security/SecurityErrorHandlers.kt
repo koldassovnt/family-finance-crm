@@ -60,7 +60,7 @@ class JsonAccessDeniedHandler(
     )
 }
 
-private fun HttpServletResponse.writeError(
+internal fun HttpServletResponse.writeError(
     objectMapper: ObjectMapper,
     httpStatus: HttpStatus,
     body: ErrorResponse,

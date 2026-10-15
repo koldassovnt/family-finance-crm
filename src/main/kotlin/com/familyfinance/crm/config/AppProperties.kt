@@ -17,7 +17,22 @@ data class AppProperties(
     val bootstrapOwner: BootstrapOwnerProperties = BootstrapOwnerProperties(),
     @field:Valid
     val marketData: MarketDataProperties = MarketDataProperties(),
+    val bot: BotProperties = BotProperties(),
 ) {
+    /**
+     * The Telegram bot, a trusted client that acts on behalf of whoever is
+     * writing to it. Optional: with no token every bot request is refused.
+     */
+    data class BotProperties(
+        /** Supplied via BOT_API_TOKEN; blank means the bot is switched off. */
+        val token: String = "",
+    ) {
+        val isConfigured: Boolean get() = token.isNotBlank()
+
+        /** Never let the token reach a log line or a bind-failure report. */
+        override fun toString() = "BotProperties(token=***)"
+    }
+
     /**
      * Prices and exchange rates from API Ninjas. Optional: with no key the app
      * runs exactly as before and holdings simply report no current value.

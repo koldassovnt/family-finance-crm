@@ -12,5 +12,8 @@ enum class ErrorCode {
     CONFLICT,
     CURRENCY_MISMATCH,
     DUPLICATE_BUDGET,
+
+    /** The bot spoke for a Telegram account no user has linked — reply "send /start". */
+    TELEGRAM_NOT_LINKED,
     INTERNAL_ERROR,
 }

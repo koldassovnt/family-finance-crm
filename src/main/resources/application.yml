@@ -54,6 +54,9 @@ app:
     # Stocks held in a KZT account come from KASE's own site: no key, no quota.
     kase-base-url: https://kase.kz
     kase-refresh-cron: "0 30 18 * * *"
+  # The Telegram bot's shared secret, sent as X-Bot-Token. Blank = bot refused.
+  bot:
+    token: ${BOT_API_TOKEN:}
 
 springdoc:
   swagger-ui:

@@ -46,6 +46,19 @@ class BillServiceImplTest {
     }
 
     @Test
+    fun `reminds about today's bills when no date is given, grouped by owner`() {
+        val member = user(email = "member@example.com")
+        val rent = bill(owner, name = "Rent", dueDate = today)
+        val phone = bill(member, name = "Phone", dueDate = today)
+        val water = bill(owner, name = "Water", dueDate = today)
+        every { billRepository.findUnpaidDueOnForTelegramLinkedOwners(today) } returns listOf(rent, phone, water)
+
+        val due = service.dueForTelegramReminders(date = null)
+
+        assertEquals(mapOf(owner to listOf(rent, water), member to listOf(phone)), due)
+    }
+
+    @Test
     fun `an unpaid bill past its due date is overdue`() {
         val subject = bill(owner, dueDate = today.minusDays(1))
         every { billRepository.findAllByOwnerOrderByDueDateAscNameAsc(owner) } returns listOf(subject)

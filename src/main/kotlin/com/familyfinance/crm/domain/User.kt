@@ -31,4 +31,13 @@ class User(
     /** With its leading `@`, as Telegram shows it; how the bot knows who is writing. */
     @Column(length = 33)
     var telegramUsername: String? = null,
+    /**
+     * Set by the bot on the first `/start` and cleared whenever the username
+     * changes, so a Telegram account keeps access only while it still matches.
+     */
+    @Column
+    var telegramUserId: Long? = null,
+    /** Where the bot sends reminders; set alongside [telegramUserId]. */
+    @Column
+    var telegramChatId: Long? = null,
 ) : BaseEntity()

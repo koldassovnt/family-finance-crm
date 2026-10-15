@@ -2,6 +2,7 @@ package com.familyfinance.crm.web
 
 import com.familyfinance.crm.domain.User
 import com.familyfinance.crm.exception.UnauthenticatedException
+import com.familyfinance.crm.security.TelegramUserAuthentication
 import com.familyfinance.crm.service.UserService
 import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken
@@ -18,9 +19,15 @@ class CurrentUserProvider(
     private val userService: UserService,
 ) {
     fun require(): User {
-        val token =
-            SecurityContextHolder.getContext().authentication as? JwtAuthenticationToken
-                ?: throw UnauthenticatedException("A valid bearer token is required")
-        return userService.getById(UUID.fromString(token.token.subject))
+        val userId =
+            when (val authentication = SecurityContextHolder.getContext().authentication) {
+                is JwtAuthenticationToken -> UUID.fromString(authentication.token.subject)
+
+                // The Telegram bot, speaking for the user it resolved by Telegram id.
+                is TelegramUserAuthentication -> authentication.userId
+
+                else -> throw UnauthenticatedException("A valid bearer token is required")
+            }
+        return userService.getById(userId)
     }
 }

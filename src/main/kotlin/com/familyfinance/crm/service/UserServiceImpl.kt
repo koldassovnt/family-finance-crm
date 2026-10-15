@@ -73,8 +73,37 @@ class UserServiceImpl(
     ): User {
         val user = getById(id)
         request.telegramUsername?.let {
-            user.telegramUsername = it.orElse(null)?.let { raw -> availableTelegramUsername(raw, forUserId = id) }
+            val username = it.orElse(null)?.let { raw -> availableTelegramUsername(raw, forUserId = id) }
+            // A different username may be a different person's Telegram account:
+            // whoever linked under the old one must not keep speaking for this user.
+            if (!username.equals(user.telegramUsername, ignoreCase = true)) {
+                user.telegramUserId = null
+                user.telegramChatId = null
+            }
+            user.telegramUsername = username
         }
+        return user
+    }
+
+    @Transactional(readOnly = true)
+    override fun findByTelegramUserId(telegramUserId: Long): User? = userRepository.findByTelegramUserId(telegramUserId)
+
+    @Transactional
+    override fun linkTelegram(
+        telegramUsername: String,
+        telegramUserId: Long,
+        chatId: Long,
+    ): User {
+        val username = "@" + telegramUsername.trim().removePrefix("@")
+        val user =
+            userRepository.findByTelegramUsernameIgnoreCase(username)
+                ?: throw NotFoundException("No user has Telegram username $username")
+        val holder = userRepository.findByTelegramUserId(telegramUserId)
+        if (holder != null && holder.id != user.id) {
+            throw ConflictException("This Telegram account is already linked to another user")
+        }
+        user.telegramUserId = telegramUserId
+        user.telegramChatId = chatId
         return user
     }
 

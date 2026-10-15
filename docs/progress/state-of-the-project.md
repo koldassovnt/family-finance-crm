@@ -20,25 +20,32 @@ section below was last checked on 2026-09-20; that repo moves on its own.
 The original Phase 7 (*Automation & Family Access*) was dropped and its number
 reused by topics. Phases 5 and 6 keep theirs.
 
-**Migrations run to `V13`.** V1 initial schema, V2 budgets/goals, V3
+**Migrations run to `V14`.** V1 initial schema, V2 budgets/goals, V3
 transaction exchange rate, V4 budget versions, V5 goal archived + password
 rotation, V6 bills, V7 topics, V8 shares, V9 trades, V10 market quotes, V11 a
 family flag on transactions (withdrawn and dropped by V12), V12 planned
-purchases, V13 a user's Telegram username. Live runs `1.5.0`, deployed
-2026-10-15 after an on-demand dump (`family_finance-2026-10-15_1615.dump`).
+purchases, V13 a user's Telegram username, V14 the Telegram user and chat
+ids. Live runs `1.6.0`, deployed 2026-10-15 after an on-demand
+dump; `1.5.0` (`V13`) went out the same day.
 
-**Tests: 317, all passing** (2026-10-15), unit-only with MockK. Integration tests are
+**Tests: 333, all passing** (2026-10-15), unit-only with MockK. Integration tests are
 deliberately deferred by the requirements until there is a frontend and a
 Telegram bot to test against. The frontend exists and the bot is on its way,
 so this is worth revisiting rather than treating as settled.
 
 ### Endpoints added most recently
 
+- The Telegram bot as a client (2026-10-15, `V14`): `X-Bot-Token` against
+  `BOT_API_TOKEN`, `POST /api/v1/bot/link` on `/start`, and
+  `GET /api/v1/bot/bills-due?date=` for its 10:00 reminder. With
+  `X-Telegram-User-Id` it acts as a linked user on transactions, accounts,
+  categories, bills and planned purchases only. The contract was agreed with
+  the bot's own session (`finance-tracker-telegram-bot`, Go); the rules are in
+  `00-` under auth. Run end to end against a throwaway database.
 - Telegram username (2026-10-15, `V13`): `UserResponse` gained a nullable
   `telegramUsername` (stored with its `@`), `POST /api/v1/users` accepts it,
   and `PATCH /api/v1/users/me` `{telegramUsername}` sets or clears your own.
-  Unique ignoring case. Groundwork for the Telegram bot as a client; how the
-  bot authenticates is not decided.
+  Unique ignoring case. The frontend edits it on a new profile page.
 
 - Market data (2026-10-09, migration `V10`, deployed that day after an
   on-demand dump, `family_finance-2026-10-09_1150.dump`; run with the real API

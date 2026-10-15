@@ -6,6 +6,7 @@ import com.familyfinance.crm.domain.UserRole
 import com.familyfinance.crm.dto.CreateUserRequest
 import com.familyfinance.crm.dto.UpdateMeRequest
 import com.familyfinance.crm.exception.ConflictException
+import com.familyfinance.crm.exception.NotFoundException
 import com.familyfinance.crm.exception.UnauthenticatedException
 import com.familyfinance.crm.exception.ValidationException
 import com.familyfinance.crm.fixedClock
@@ -135,6 +136,88 @@ class UserServiceImplTest {
         service.updateMe(existing.idValue, UpdateMeRequest())
 
         assertEquals("@owner_tg", existing.telegramUsername)
+    }
+
+    @Test
+    fun `changing your telegram username unlinks the old Telegram account`() {
+        val existing = user().apply { linkTelegram("@owner_tg") }
+        every { userRepository.findById(existing.idValue) } returns Optional.of(existing)
+        every { userRepository.findByTelegramUsernameIgnoreCase("@someone_else") } returns null
+
+        service.updateMe(existing.idValue, UpdateMeRequest(telegramUsername = Optional.of("someone_else")))
+
+        assertNull(existing.telegramUserId)
+        assertNull(existing.telegramChatId)
+    }
+
+    @Test
+    fun `clearing your telegram username unlinks the Telegram account`() {
+        val existing = user().apply { linkTelegram("@owner_tg") }
+        every { userRepository.findById(existing.idValue) } returns Optional.of(existing)
+
+        service.updateMe(existing.idValue, UpdateMeRequest(telegramUsername = Optional.empty()))
+
+        assertNull(existing.telegramUserId)
+    }
+
+    @Test
+    fun `re-saving the same telegram username in another case keeps the link`() {
+        val existing = user().apply { linkTelegram("@owner_tg") }
+        every { userRepository.findById(existing.idValue) } returns Optional.of(existing)
+        every { userRepository.findByTelegramUsernameIgnoreCase("@Owner_TG") } returns existing
+
+        service.updateMe(existing.idValue, UpdateMeRequest(telegramUsername = Optional.of("Owner_TG")))
+
+        assertEquals(123L, existing.telegramUserId)
+    }
+
+    @Test
+    fun `links a Telegram account by username, adding the missing @`() {
+        val existing = user().apply { telegramUsername = "@owner_tg" }
+        every { userRepository.findByTelegramUsernameIgnoreCase("@owner_tg") } returns existing
+        every { userRepository.findByTelegramUserId(123) } returns null
+
+        service.linkTelegram(telegramUsername = "owner_tg", telegramUserId = 123, chatId = 456)
+
+        assertEquals(123L, existing.telegramUserId)
+        assertEquals(456L, existing.telegramChatId)
+    }
+
+    @Test
+    fun `linking again refreshes the chat id`() {
+        val existing = user().apply { linkTelegram("@owner_tg") }
+        every { userRepository.findByTelegramUsernameIgnoreCase("@owner_tg") } returns existing
+        every { userRepository.findByTelegramUserId(123) } returns existing
+
+        service.linkTelegram(telegramUsername = "owner_tg", telegramUserId = 123, chatId = 789)
+
+        assertEquals(789L, existing.telegramChatId)
+    }
+
+    @Test
+    fun `refuses to link a username nobody has`() {
+        every { userRepository.findByTelegramUsernameIgnoreCase("@stranger") } returns null
+
+        assertThrows<NotFoundException> {
+            service.linkTelegram(telegramUsername = "stranger", telegramUserId = 123, chatId = 456)
+        }
+    }
+
+    @Test
+    fun `refuses to link a Telegram account another user already has`() {
+        val existing = user().apply { telegramUsername = "@owner_tg" }
+        every { userRepository.findByTelegramUsernameIgnoreCase("@owner_tg") } returns existing
+        every { userRepository.findByTelegramUserId(123) } returns user(email = "member@example.com")
+
+        assertThrows<ConflictException> {
+            service.linkTelegram(telegramUsername = "owner_tg", telegramUserId = 123, chatId = 456)
+        }
+    }
+
+    private fun User.linkTelegram(username: String) {
+        telegramUsername = username
+        telegramUserId = 123
+        telegramChatId = 456
     }
 
     @Test

@@ -1,9 +1,14 @@
 package com.familyfinance.crm.config
 
+import com.familyfinance.crm.security.BOT_PATHS
+import com.familyfinance.crm.security.BOT_TOKEN_HEADER
+import com.familyfinance.crm.security.BotAuthenticationFilter
 import com.familyfinance.crm.security.JsonAccessDeniedHandler
 import com.familyfinance.crm.security.JsonAuthenticationEntryPoint
 import com.familyfinance.crm.security.JwtService
 import com.familyfinance.crm.security.ROLE_CLAIM
+import com.familyfinance.crm.service.UserService
+import com.fasterxml.jackson.databind.ObjectMapper
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.http.HttpMethod
@@ -34,8 +39,18 @@ class SecurityConfig(
     @Bean
     fun passwordEncoder(): PasswordEncoder = BCryptPasswordEncoder()
 
+    /**
+     * The bot filter's collaborators are injected here rather than into the
+     * class: `UserService` needs [passwordEncoder], so a constructor dependency
+     * on it would be a cycle.
+     */
     @Bean
-    fun securityFilterChain(http: HttpSecurity): SecurityFilterChain =
+    fun securityFilterChain(
+        http: HttpSecurity,
+        properties: AppProperties,
+        userService: UserService,
+        objectMapper: ObjectMapper,
+    ): SecurityFilterChain =
         http
             // Stateless bearer-token auth: no session to fixate, no cookie to forge.
             .csrf { it.disable() }
@@ -50,9 +65,15 @@ class SecurityConfig(
                     .permitAll()
                     .requestMatchers(PUBLIC_PATHS)
                     .permitAll()
+                    // A person's JWT never reaches the bot's own endpoints.
+                    .requestMatchers(BOT_PATHS)
+                    .hasRole("BOT")
                     .anyRequest()
                     .authenticated()
-            }.oauth2ResourceServer { server ->
+            }.addFilterBefore(
+                BotAuthenticationFilter(properties = properties.bot, userService = userService, objectMapper = objectMapper),
+                BearerTokenAuthenticationFilter::class.java,
+            ).oauth2ResourceServer { server ->
                 server.jwt { it.decoder(jwtService.decoder).jwtAuthenticationConverter(roleConverter()) }
                 server.bearerTokenResolver(ignoringPublicPaths())
                 server.authenticationEntryPoint(authenticationEntryPoint)
@@ -76,11 +97,14 @@ class SecurityConfig(
     /**
      * A public path never looks at the token. Otherwise a client that attaches
      * its stored token to every call would be refused a fresh login once that
-     * token expired — and a stale header would fail a health check.
+     * token expired — and a stale header would fail a health check. Nor does a
+     * bot request: its own filter has already decided it.
      */
     private fun ignoringPublicPaths(): BearerTokenResolver {
         val default = DefaultBearerTokenResolver()
-        return BearerTokenResolver { request -> if (PUBLIC_PATHS.matches(request)) null else default.resolve(request) }
+        return BearerTokenResolver { request ->
+            if (PUBLIC_PATHS.matches(request) || request.getHeader(BOT_TOKEN_HEADER) != null) null else default.resolve(request)
+        }
     }
 
     /**

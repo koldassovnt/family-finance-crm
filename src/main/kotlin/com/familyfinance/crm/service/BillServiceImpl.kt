@@ -26,6 +26,10 @@ class BillServiceImpl(
     private val clock: Clock,
 ) : BillService {
     @Transactional(readOnly = true)
+    override fun dueForTelegramReminders(date: LocalDate?): Map<User, List<Bill>> =
+        billRepository.findUnpaidDueOnForTelegramLinkedOwners(date ?: LocalDate.now(clock)).groupBy { it.owner }
+
+    @Transactional(readOnly = true)
     override fun list(
         reader: User,
         month: YearMonth?,

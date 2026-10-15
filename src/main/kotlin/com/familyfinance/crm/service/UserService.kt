@@ -43,10 +43,26 @@ interface UserService {
      */
     fun bootstrapOwner(config: BootstrapOwnerProperties): OwnerBootstrap
 
-    /** Self-service, any role: your own Telegram username, set or cleared. */
+    /**
+     * Self-service, any role: your own Telegram username, set or cleared.
+     * Changing it unlinks the bot until the new account sends `/start`.
+     */
     fun updateMe(
         id: UUID,
         request: UpdateMeRequest,
+    ): User
+
+    /** Who the bot is speaking for; null when that Telegram account is not linked. */
+    fun findByTelegramUserId(telegramUserId: Long): User?
+
+    /**
+     * The bot's `/start`: binds a Telegram account to the user whose username
+     * it carries. Repeating it is harmless and refreshes the chat id.
+     */
+    fun linkTelegram(
+        telegramUsername: String,
+        telegramUserId: Long,
+        chatId: Long,
     ): User
 
     /**

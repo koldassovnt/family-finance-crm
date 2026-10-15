@@ -83,7 +83,8 @@ Implications, so nothing gets missed when this is built:
 - The existing "block delete if still referenced" rules (e.g. `Category` referenced by a `Budget`) now mean: block **soft**-deleting the parent while a non-deleted child still references it.
 
 - **User** — `id, email, displayName, passwordHash, passwordChangedAt, role (OWNER/MEMBER), isDeleted, createdAt, updatedAt`. **Exactly one `OWNER` exists**, created by the bootstrap step; the user-creation endpoint can only make `MEMBER`. **`VIEWER` was removed** — it was never enforced anywhere, and an unenforced read-only role is worse than none (it implies a restriction that doesn't exist).
-  - **`telegramUsername`** (added 2026-10-15, `V13`) — optional, for the Telegram bot that is becoming a client of the service. Stored with its leading `@`; input is accepted with or without it. Telegram's own rule applies: 5–32 letters, digits or underscores. Unique ignoring case among live users (partial index, like `email`). Set by the owner when creating a member, or by anyone for themselves via `PATCH /api/v1/users/me` `{telegramUsername}`, where an explicit `null` clears it. How the bot authenticates is not decided yet.
+  - **`telegramUsername`** (added 2026-10-15, `V13`) — optional, for the Telegram bot that is becoming a client of the service. Stored with its leading `@`; input is accepted with or without it. Telegram's own rule applies: 5–32 letters, digits or underscores. Unique ignoring case among live users (partial index, like `email`). Set by the owner when creating a member, or by anyone for themselves via `PATCH /api/v1/users/me` `{telegramUsername}`, where an explicit `null` clears it.
+  - **`telegramUserId`, `telegramChatId`** (`V14`) — set by the bot's `POST /api/v1/bot/link` on a person's first `/start`, then the key the bot acts by, since a username can change. **Changing or clearing `telegramUsername` nulls both**, so a Telegram account keeps access only while the username still points at it. One Telegram account links to at most one live user.
   - **In practice this is a single-user system today.** The per-user ownership structure (`owner: User` on every entity, the user-creation endpoint, `MEMBER`) is kept deliberately anyway: it costs nothing while unused, and retrofitting per-user scoping onto an existing dataset is genuinely painful. `MEMBER` currently behaves identically to `OWNER` except for not being able to create users.
 - **Bank** — `id, name, createdAt, updatedAt, isDeleted`. A lookup/reference entity — real-world banks ("Halyk Bank", "Kaspi Bank", etc.), not personal to one family member. **Confirmed shared/global, not per-user** — unlike `Category`, which was deliberately made per-user. Self-service find-or-create: any family member can add a new `Bank` by name when setting up an account if it isn't already in the list, rather than this being admin-provisioned. Constraint: unique on `name` **where `is_deleted = false`** (same partial-index pattern as everywhere else soft delete meets uniqueness).
 - **Account** — any place money sits: `id, owner, bank, name, type (CASH/BANK/DEPOSIT/BROKER/CRYPTO), balance, currency, isDeleted, createdAt, updatedAt`. `BROKER` and `CRYPTO` are the two types that can record a `TRADE` (Phase 5); their `balance` is uninvested cash. **`Account.balance` always means money you *have*** — there is no account type where it means money owed. **`CARD`, `LOAN`, and `MORTGAGE` were removed** — a debit card is just a `BANK` account, credit-card debt isn't tracked, and loans/mortgages aren't modelled as entities at all: they're paid via ordinary `EXPENSE` transactions against a user-created "Loan"/"Mortgage" category. `bank: Bank` FK is **nullable** — a `CASH` account has no bank. **Confirmed single-owner** — joint/shared accounts were considered and explicitly rejected; every account belongs to exactly one `User`. Don't revisit this without a real need. `DEPOSIT` (a fixed-term deposit) behaves like `BANK` for now — a plain balance; add interest-rate/maturity fields later only if term-deposit specifics turn out to matter.
@@ -128,6 +129,19 @@ Implications, so nothing gets missed when this is built:
   out. Without that, a leaked token would stay valid for its full 30 days with
   nothing you could do — which is precisely the situation a password change is
   a response to.
+- **The Telegram bot authenticates by shared secret** (decided by the owner
+  2026-10-15): `BOT_API_TOKEN` in `.env`, sent as `X-Bot-Token` and compared
+  in constant time; blank means every bot request is refused. A request
+  carrying it never falls back to a JWT. On `/api/v1/bot/**` (`link`,
+  `bills-due`) the bot speaks for itself, and no person's JWT is accepted
+  there. Elsewhere it adds `X-Telegram-User-Id` and acts as that linked user,
+  with exactly their rights, **only on transactions, accounts, categories,
+  bills and planned purchases** — a leaked bot token cannot reach sharing,
+  users or anything else. An unknown or missing id is a 403
+  `TELEGRAM_NOT_LINKED`, so the bot can answer "send /start". The 10:00
+  reminder is the bot's own cron reading `GET /api/v1/bot/bills-due?date=`:
+  unpaid bills due that day, each linked owner's own only. Marking a bill paid
+  from the bot is the ordinary `PATCH /bills/{id}` and records no expense.
 - **Timezone: `Asia/Almaty`, fixed** — set as a config property
   (`app.timezone`), not per-user and not UTC. Everything date-dependent
   resolves against it: the default `occurredOn` for a new transaction, the

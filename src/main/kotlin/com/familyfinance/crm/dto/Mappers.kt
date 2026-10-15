@@ -3,6 +3,7 @@ package com.familyfinance.crm.dto
 import com.familyfinance.crm.domain.Account
 import com.familyfinance.crm.domain.Bank
 import com.familyfinance.crm.domain.BaseEntity
+import com.familyfinance.crm.domain.Bill
 import com.familyfinance.crm.domain.Category
 import com.familyfinance.crm.domain.MarketQuote
 import com.familyfinance.crm.domain.PlannedPurchase
@@ -33,6 +34,27 @@ fun User.toResponse() =
     )
 
 fun User.toRef() = UserRef(id = requiredId(), displayName = displayName)
+
+fun User.toTelegramLinkResponse() = TelegramLinkResponse(userId = requiredId(), displayName = displayName, role = role)
+
+/** Only ever called for a linked owner, who has both Telegram ids. */
+fun User.toBillsDueResponse(bills: List<Bill>) =
+    BillsDueResponse(
+        userId = requiredId(),
+        telegramUserId = checkNotNull(telegramUserId) { "a linked user has a Telegram user id" },
+        chatId = checkNotNull(telegramChatId) { "a linked user has a chat id" },
+        displayName = displayName,
+        bills =
+            bills.map {
+                BillsDueResponse.BillDue(
+                    id = it.requiredId(),
+                    name = it.name,
+                    amount = it.amount,
+                    currency = it.currency,
+                    dueDate = it.dueDate,
+                )
+            },
+    )
 
 fun Bank.toResponse() = BankResponse(id = requiredId(), name = name)
 

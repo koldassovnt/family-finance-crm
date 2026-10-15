@@ -24,6 +24,8 @@ interface UserRepository : JpaRepository<User, UUID> {
     @Query("SELECT u FROM User u WHERE lower(u.telegramUsername) = lower(:telegramUsername)")
     fun findByTelegramUsernameIgnoreCase(telegramUsername: String): User?
 
+    fun findByTelegramUserId(telegramUserId: Long): User?
+
     fun countByRole(role: UserRole): Long
 
     /** Only the instant, so the per-request revocation check stays cheap. */

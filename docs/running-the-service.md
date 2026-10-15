@@ -104,6 +104,17 @@ holdings show purchase cost only. To fetch immediately rather than wait for
 were updated, failed, or left for tomorrow by the cap. The container needs
 outbound HTTPS to `api.api-ninjas.com`.
 
+**Optional: the Telegram bot.** The bot authenticates with a shared secret;
+put the same value in this `.env` and in the bot's:
+
+```bash
+BOT_API_TOKEN=a-long-random-string
+```
+
+Restart the app after setting it. Without it every bot request is refused.
+Each person then sets their Telegram username on their profile and sends
+`/start` to the bot.
+
 **Stocks in a KZT broker account** are priced from `kase.kz` instead, with no
 key and nothing to set up: at 18:30 Almaty time every day, and on the same
 manual refresh. It needs outbound HTTPS to `kase.kz`. If that site is down or

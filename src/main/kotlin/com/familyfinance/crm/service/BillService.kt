@@ -6,6 +6,7 @@ import com.familyfinance.crm.domain.User
 import com.familyfinance.crm.dto.CreateBillBatchRequest
 import com.familyfinance.crm.dto.CreateBillRequest
 import com.familyfinance.crm.dto.UpdateBillRequest
+import java.time.LocalDate
 import java.time.YearMonth
 import java.util.UUID
 
@@ -16,6 +17,13 @@ data class BillWithStatus(
 )
 
 interface BillService {
+    /**
+     * The bot's morning reminder: unpaid bills due on [date] (today in the app
+     * timezone when null), for owners linked to Telegram, grouped by owner.
+     * Their own bills only — a shared bill is its owner's to pay.
+     */
+    fun dueForTelegramReminders(date: LocalDate?): Map<User, List<Bill>>
+
     /**
      * The caller's bills, narrowed by either filter or both. [month] matches the
      * due date; [unpaid] is `true` for outstanding bills and `false` for settled
