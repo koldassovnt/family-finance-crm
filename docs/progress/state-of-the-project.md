@@ -24,8 +24,8 @@ reused by topics. Phases 5 and 6 keep theirs.
 transaction exchange rate, V4 budget versions, V5 goal archived + password
 rotation, V6 bills, V7 topics, V8 shares, V9 trades, V10 market quotes, V11 a
 family flag on transactions (withdrawn and dropped by V12), V12 planned
-purchases, V13 a user's Telegram username. Live runs `1.4.0`, which is at
-`V12`; V13 is not deployed yet.
+purchases, V13 a user's Telegram username. Live runs `1.5.0`, deployed
+2026-10-15 after an on-demand dump (`family_finance-2026-10-15_1615.dump`).
 
 **Tests: 317, all passing** (2026-10-15), unit-only with MockK. Integration tests are
 deliberately deferred by the requirements until there is a frontend and a
