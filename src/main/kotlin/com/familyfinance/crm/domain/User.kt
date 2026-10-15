@@ -28,4 +28,7 @@ class User(
      */
     @Column(nullable = false)
     var passwordChangedAt: Instant,
+    /** With its leading `@`, as Telegram shows it; how the bot knows who is writing. */
+    @Column(length = 33)
+    var telegramUsername: String? = null,
 ) : BaseEntity()

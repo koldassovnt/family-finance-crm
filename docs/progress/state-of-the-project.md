@@ -1,7 +1,7 @@
 # State of the project
 
-As of **2026-09-20**. Backend `main` at `29e9ece`; the frontend was at
-`dd8320d` when this was written and moves on its own.
+As of **2026-10-15** for the backend (`main` after `6426ef4`). The frontend
+section below was last checked on 2026-09-20; that repo moves on its own.
 
 ## Backend — every in-scope phase is built
 
@@ -12,7 +12,7 @@ As of **2026-09-20**. Backend `main` at `29e9ece`; the frontend was at
 | 3 | Loans & mortgages | **Dropped** — tracked as ordinary expense categories |
 | 4 | Bills and the due-date calendar | Built |
 | 5 | Investments — trades on broker and crypto accounts, holdings at cost | Built 2026-10-08, **backend only** |
-| 6 | Net worth and reporting | Transaction export to XLSX built; net worth spec'd, not built (`../todo.md`) |
+| 6 | Net worth and reporting | Transaction export to XLSX built; net worth spec'd, not built, and not planned unless asked |
 | 7 | Topics — a trip's or renovation's transactions as one view | Built |
 | 8 | Sharing a single account/goal/budget/bill/topic with another member, read-only | Built, and built in the frontend too |
 | 9 | Planned purchases — a list of things to buy, personal or family, marked bought | Built 2026-10-13, and built in the frontend too |
@@ -20,18 +20,25 @@ As of **2026-09-20**. Backend `main` at `29e9ece`; the frontend was at
 The original Phase 7 (*Automation & Family Access*) was dropped and its number
 reused by topics. Phases 5 and 6 keep theirs.
 
-**Migrations run to `V12`** (V10 market quotes; V11 a family flag on transactions, withdrawn and dropped by V12, which adds planned purchases). V1 initial schema, V2 budgets/goals, V3 transaction
-exchange rate, V4 budget versions, V5 goal archived + password rotation,
-V6 bills, V7 topics, V8 shares, V9 trades. V9 was applied to the live
-database on 2026-10-08, after an on-demand dump
-(`family_finance-2026-10-08_1614.dump`).
+**Migrations run to `V13`.** V1 initial schema, V2 budgets/goals, V3
+transaction exchange rate, V4 budget versions, V5 goal archived + password
+rotation, V6 bills, V7 topics, V8 shares, V9 trades, V10 market quotes, V11 a
+family flag on transactions (withdrawn and dropped by V12), V12 planned
+purchases, V13 a user's Telegram username. Live runs `1.4.0`, which is at
+`V12`; V13 is not deployed yet.
 
-**Tests: 231, all passing** (2026-10-08), unit-only with MockK. Integration tests are
+**Tests: 317, all passing** (2026-10-15), unit-only with MockK. Integration tests are
 deliberately deferred by the requirements until there is a frontend and a
-Telegram bot to test against — which is now half true, so this is worth
-revisiting rather than treating as settled.
+Telegram bot to test against. The frontend exists and the bot is on its way,
+so this is worth revisiting rather than treating as settled.
 
 ### Endpoints added most recently
+
+- Telegram username (2026-10-15, `V13`): `UserResponse` gained a nullable
+  `telegramUsername` (stored with its `@`), `POST /api/v1/users` accepts it,
+  and `PATCH /api/v1/users/me` `{telegramUsername}` sets or clears your own.
+  Unique ignoring case. Groundwork for the Telegram bot as a client; how the
+  bot authenticates is not decided.
 
 - Market data (2026-10-09, migration `V10`, deployed that day after an
   on-demand dump, `family_finance-2026-10-09_1150.dump`; run with the real API
@@ -115,11 +122,9 @@ What that means in the code, so the next session does not have to rediscover it:
 
 Otherwise nothing is half-built. These are open by choice:
 
-1. **Phase 6** (net worth) — spec'd, not built. Its doc assumed price
-   snapshots that Phase 5 did not end up with. The owner decided on 2026-10-08
-   that it **waits** until they choose open APIs for exchange rates and for
-   crypto and stock prices; **Phase 5's current value** waits on the same
-   thing. Both are written up in `../todo.md`.
+1. **Phase 6** (net worth) — spec'd, not built, and dropped from the to-do list by
+   the owner on 2026-10-15. Its doc predates how Phase 5 was built and needs
+   re-reviewing if it is ever picked up.
 2. **Phase 7's open assumption** — one topic per transaction, built that way.
    A join table would let one expense sit in two topics, at the cost of every
    cross-topic total double-counting it.
@@ -138,6 +143,10 @@ Otherwise nothing is half-built. These are open by choice:
    traced" rather than watched, so anything visual outside Phase 8 remains
    unverified — and three defects surviving into a browser on the one screen
    set that got there is the argument for not trusting the rest.
-6. **Deployment to a real server has not been done yet** — see
-   `../running-the-service.md`, written for that purpose but not yet followed
-   end to end on a real host.
+6. **The frontend's view is stale here.** This section was last checked on
+   2026-09-20; whether the frontend has caught up with Phase 5 (investments,
+   market data) or shows the Telegram username is for that repo's progress log
+   to say.
+
+It is deployed: this Windows laptop is the production host, running the
+compose stack described in `../running-the-service.md`.

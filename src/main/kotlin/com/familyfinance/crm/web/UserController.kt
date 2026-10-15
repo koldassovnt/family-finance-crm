@@ -2,6 +2,7 @@ package com.familyfinance.crm.web
 
 import com.familyfinance.crm.dto.ChangePasswordRequest
 import com.familyfinance.crm.dto.CreateUserRequest
+import com.familyfinance.crm.dto.UpdateMeRequest
 import com.familyfinance.crm.dto.UserResponse
 import com.familyfinance.crm.dto.requiredId
 import com.familyfinance.crm.dto.toResponse
@@ -16,6 +17,7 @@ import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.PatchMapping
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
@@ -66,6 +68,28 @@ class UserController(
     )
     @ApiResponse(responseCode = "200", description = "The authenticated user")
     fun me(): UserResponse = currentUser.require().toResponse()
+
+    @PatchMapping("/me")
+    @Operation(
+        summary = "Update your own profile",
+        description =
+            "Any role, for your own account only. `telegramUsername` is accepted with or without its `@` " +
+                "and stored with it; an explicit null clears it, leaving it out changes nothing.",
+    )
+    @ApiResponse(responseCode = "200", description = "Updated")
+    @ApiResponse(
+        responseCode = "400",
+        description = "Not a valid Telegram username",
+        content = [Content(schema = Schema(implementation = ErrorResponse::class))],
+    )
+    @ApiResponse(
+        responseCode = "409",
+        description = "Telegram username already belongs to another user",
+        content = [Content(schema = Schema(implementation = ErrorResponse::class))],
+    )
+    fun updateMe(
+        @RequestBody request: UpdateMeRequest,
+    ): UserResponse = userService.updateMe(id = currentUser.require().requiredId(), request = request).toResponse()
 
     @PostMapping("/me/password")
     @ResponseStatus(HttpStatus.NO_CONTENT)

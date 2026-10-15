@@ -4,6 +4,7 @@ import com.familyfinance.crm.config.AppProperties.BootstrapOwnerProperties
 import com.familyfinance.crm.domain.User
 import com.familyfinance.crm.domain.UserRole
 import com.familyfinance.crm.dto.CreateUserRequest
+import com.familyfinance.crm.dto.UpdateMeRequest
 import com.familyfinance.crm.exception.ConflictException
 import com.familyfinance.crm.exception.UnauthenticatedException
 import com.familyfinance.crm.exception.ValidationException
@@ -23,6 +24,7 @@ import org.springframework.security.crypto.password.PasswordEncoder
 import java.util.Optional
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class UserServiceImplTest {
@@ -73,6 +75,79 @@ class UserServiceImplTest {
         every { userRepository.existsByEmailIgnoreCase(request.email) } returns true
 
         assertThrows<ConflictException> { service.createMember(request) }
+    }
+
+    @Test
+    fun `creates a member with a telegram username, adding the missing @`() {
+        every { userRepository.existsByEmailIgnoreCase(request.email) } returns false
+        every { userRepository.findByTelegramUsernameIgnoreCase("@member_tg") } returns null
+
+        val created = service.createMember(request.copy(telegramUsername = "member_tg"))
+
+        assertEquals("@member_tg", created.telegramUsername)
+    }
+
+    @Test
+    fun `rejects a member whose telegram username another user has`() {
+        every { userRepository.existsByEmailIgnoreCase(request.email) } returns false
+        every { userRepository.findByTelegramUsernameIgnoreCase("@Member_TG") } returns user()
+
+        assertThrows<ConflictException> { service.createMember(request.copy(telegramUsername = "@Member_TG")) }
+    }
+
+    @Test
+    fun `sets your own telegram username, keeping the @`() {
+        val existing = user()
+        every { userRepository.findById(existing.idValue) } returns Optional.of(existing)
+        every { userRepository.findByTelegramUsernameIgnoreCase("@owner_tg") } returns null
+
+        service.updateMe(existing.idValue, UpdateMeRequest(telegramUsername = Optional.of(" @owner_tg ")))
+
+        assertEquals("@owner_tg", existing.telegramUsername)
+    }
+
+    @Test
+    fun `re-saving your own telegram username in another case is not a clash`() {
+        val existing = user().apply { telegramUsername = "@owner_tg" }
+        every { userRepository.findById(existing.idValue) } returns Optional.of(existing)
+        every { userRepository.findByTelegramUsernameIgnoreCase("@Owner_TG") } returns existing
+
+        service.updateMe(existing.idValue, UpdateMeRequest(telegramUsername = Optional.of("Owner_TG")))
+
+        assertEquals("@Owner_TG", existing.telegramUsername)
+    }
+
+    @Test
+    fun `an explicit null clears your telegram username`() {
+        val existing = user().apply { telegramUsername = "@owner_tg" }
+        every { userRepository.findById(existing.idValue) } returns Optional.of(existing)
+
+        service.updateMe(existing.idValue, UpdateMeRequest(telegramUsername = Optional.empty()))
+
+        assertNull(existing.telegramUsername)
+    }
+
+    @Test
+    fun `leaving the telegram username out changes nothing`() {
+        val existing = user().apply { telegramUsername = "@owner_tg" }
+        every { userRepository.findById(existing.idValue) } returns Optional.of(existing)
+
+        service.updateMe(existing.idValue, UpdateMeRequest())
+
+        assertEquals("@owner_tg", existing.telegramUsername)
+    }
+
+    @Test
+    fun `rejects a telegram username Telegram itself would not allow`() {
+        val existing = user()
+        every { userRepository.findById(existing.idValue) } returns Optional.of(existing)
+
+        val error =
+            assertThrows<ValidationException> {
+                service.updateMe(existing.idValue, UpdateMeRequest(telegramUsername = Optional.of("@abc")))
+            }
+
+        assertEquals(setOf("telegramUsername"), error.fieldErrors.keys)
     }
 
     @Test

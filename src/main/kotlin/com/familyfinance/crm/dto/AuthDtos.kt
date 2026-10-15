@@ -5,6 +5,7 @@ import jakarta.validation.constraints.Email
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Size
 import java.time.Instant
+import java.util.Optional
 import java.util.UUID
 
 data class LoginRequest(
@@ -35,6 +36,17 @@ data class CreateUserRequest(
     val password: String,
     /** Optional; only `MEMBER` is accepted — there is exactly one `OWNER`. */
     val role: UserRole? = null,
+    /** Optional; with or without the `@`, stored with it. Format is checked in the service. */
+    val telegramUsername: String? = null,
+)
+
+/**
+ * Your own profile. `telegramUsername` is an [Optional] so an explicit `null`
+ * clears it, while leaving it out changes nothing.
+ */
+data class UpdateMeRequest(
+    /** Format is checked in the service — a wrapped value can't be annotated. */
+    val telegramUsername: Optional<String>? = null,
 )
 
 data class UserResponse(
@@ -42,6 +54,7 @@ data class UserResponse(
     val email: String,
     val displayName: String,
     val role: UserRole,
+    val telegramUsername: String?,
     val createdAt: Instant?,
 )
 

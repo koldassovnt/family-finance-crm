@@ -54,7 +54,6 @@ is created. Flyway migrates on startup; bootstrap the `OWNER` as above.
 - [`docs/progress/`](docs/progress/) — what is built, the development
   environment and seeded data, and the decisions behind recent choices.
   Start here when picking the project up again.
-- [`docs/todo.md`](docs/todo.md) — what is wanted but waiting, and on what.
 
 ## Requirements
 

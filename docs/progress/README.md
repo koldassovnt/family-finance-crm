@@ -5,7 +5,7 @@ everything. **The requirements are the intent; this log is what actually
 happened.** When they disagree, trust `.claude/requirements/` for what should
 be true and this file for what is.
 
-Last updated: **2026-09-19**.
+Last updated: **2026-10-15**.
 
 | File | What it covers |
 |---|---|

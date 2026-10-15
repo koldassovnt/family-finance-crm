@@ -4,6 +4,7 @@ import com.familyfinance.crm.config.AppProperties.BootstrapOwnerProperties
 import com.familyfinance.crm.domain.User
 import com.familyfinance.crm.domain.UserRole
 import com.familyfinance.crm.dto.CreateUserRequest
+import com.familyfinance.crm.dto.UpdateMeRequest
 import com.familyfinance.crm.exception.ConflictException
 import com.familyfinance.crm.exception.NotFoundException
 import com.familyfinance.crm.exception.UnauthenticatedException
@@ -15,6 +16,8 @@ import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Clock
 import java.util.UUID
+
+private val TELEGRAM_USERNAME = Regex("[A-Za-z0-9_]{5,32}")
 
 @Service
 class UserServiceImpl(
@@ -50,6 +53,7 @@ class UserServiceImpl(
         if (userRepository.existsByEmailIgnoreCase(request.email)) {
             throw ConflictException("A user with email ${request.email} already exists")
         }
+        val telegramUsername = request.telegramUsername?.let { availableTelegramUsername(it, forUserId = null) }
         return userRepository.save(
             User(
                 email = request.email,
@@ -57,8 +61,41 @@ class UserServiceImpl(
                 passwordHash = passwordEncoder.encode(request.password),
                 role = UserRole.MEMBER,
                 passwordChangedAt = clock.instant(),
+                telegramUsername = telegramUsername,
             ),
         )
+    }
+
+    @Transactional
+    override fun updateMe(
+        id: UUID,
+        request: UpdateMeRequest,
+    ): User {
+        val user = getById(id)
+        request.telegramUsername?.let {
+            user.telegramUsername = it.orElse(null)?.let { raw -> availableTelegramUsername(raw, forUserId = id) }
+        }
+        return user
+    }
+
+    /**
+     * [raw] with or without its `@`, returned with it. Telegram allows 5–32
+     * letters, digits and underscores, and compares usernames ignoring case.
+     */
+    private fun availableTelegramUsername(
+        raw: String,
+        forUserId: UUID?,
+    ): String {
+        val name = raw.trim().removePrefix("@")
+        if (!TELEGRAM_USERNAME.matches(name)) {
+            throw invalidField("telegramUsername", "must be 5 to 32 letters, digits or underscores, optionally after an @")
+        }
+        val username = "@$name"
+        val holder = userRepository.findByTelegramUsernameIgnoreCase(username)
+        if (holder != null && holder.id != forUserId) {
+            throw ConflictException("Telegram username $username already belongs to another user")
+        }
+        return username
     }
 
     @Transactional

@@ -28,6 +28,7 @@ fun User.toResponse() =
         email = email,
         displayName = displayName,
         role = role,
+        telegramUsername = telegramUsername,
         createdAt = createdAt,
     )
 

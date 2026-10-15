@@ -14,8 +14,10 @@ price and rate sources Phase 5 defers. The same gap applies to a non-KZT cash
 account, which has no current rate either.
 
 **Decided by the owner, 2026-10-08: this phase waits** until they have chosen
-open APIs for exchange rates and for crypto and stock prices — see
-`docs/todo.md`. Do not build it at cost in the meantime.
+open APIs for exchange rates and for crypto and stock prices. Those now exist
+(API Ninjas, and kase.kz for KZT stocks — see the Phase 5 doc), but on
+2026-10-15 the owner dropped it from the to-do list: build it only if
+asked, and re-review this doc first. Never build it at cost.
 
 ## The key constraint: balances have no history
 

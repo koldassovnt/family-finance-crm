@@ -3,6 +3,7 @@ package com.familyfinance.crm.service
 import com.familyfinance.crm.config.AppProperties.BootstrapOwnerProperties
 import com.familyfinance.crm.domain.User
 import com.familyfinance.crm.dto.CreateUserRequest
+import com.familyfinance.crm.dto.UpdateMeRequest
 import java.util.UUID
 
 sealed interface OwnerBootstrap {
@@ -41,6 +42,12 @@ interface UserService {
      * misconfigured deploy fails to start instead of running owner-less.
      */
     fun bootstrapOwner(config: BootstrapOwnerProperties): OwnerBootstrap
+
+    /** Self-service, any role: your own Telegram username, set or cleared. */
+    fun updateMe(
+        id: UUID,
+        request: UpdateMeRequest,
+    ): User
 
     /**
      * Self-service, any role. Also invalidates every token issued before now,
