@@ -25,10 +25,10 @@ transaction exchange rate, V4 budget versions, V5 goal archived + password
 rotation, V6 bills, V7 topics, V8 shares, V9 trades, V10 market quotes, V11 a
 family flag on transactions (withdrawn and dropped by V12), V12 planned
 purchases, V13 a user's Telegram username, V14 the Telegram user and chat
-ids. Live runs `1.6.1`, deployed 2026-10-20 after an on-demand
-dump (`family_finance-2026-10-20_1622.dump`); `1.6.0` went out 2026-10-15.
+ids. Live runs `1.6.2`, deployed 2026-10-20 after an on-demand
+dump (`family_finance-2026-10-20_1704.dump`); `1.6.1` went out earlier the same day, `1.6.0` on 2026-10-15.
 
-**Tests: 339, all passing** (2026-10-20), unit-only with MockK. Integration tests are
+**Tests: 347, all passing** (2026-10-20), unit-only with MockK. Integration tests are
 deliberately deferred by the requirements until there is a frontend and a
 Telegram bot to test against. The frontend exists and the bot is on its way,
 so this is worth revisiting rather than treating as settled.
