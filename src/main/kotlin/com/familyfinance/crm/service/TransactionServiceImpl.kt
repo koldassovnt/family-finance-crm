@@ -33,6 +33,7 @@ class TransactionServiceImpl(
     private val accountService: AccountService,
     private val categoryService: CategoryService,
     private val topicService: TopicService,
+    private val marketDataService: MarketDataService,
     private val clock: Clock,
 ) : TransactionService {
     @Transactional
@@ -52,7 +53,6 @@ class TransactionServiceImpl(
         val amount = if (type == TransactionType.TRADE) null else requirePositive(request.amount, "amount")
         val account = accountService.getOwnedBy(accountId, owner)
         val occurredOn = resolveOccurredOn(request.occurredOn)
-        val rate = resolveExchangeRate(request.exchangeRate, account)
 
         val transaction =
             when (type) {
@@ -60,7 +60,7 @@ class TransactionServiceImpl(
                     buildSimple(
                         type = type,
                         amount = checkNotNull(amount),
-                        rate = rate,
+                        rate = resolveExchangeRate(request.exchangeRate, account),
                         account = account,
                         occurredOn = occurredOn,
                         request = request,
@@ -71,7 +71,6 @@ class TransactionServiceImpl(
                 TransactionType.TRANSFER -> {
                     buildTransfer(
                         amount = checkNotNull(amount),
-                        rate = rate,
                         account = account,
                         occurredOn = occurredOn,
                         request = request,
@@ -80,7 +79,12 @@ class TransactionServiceImpl(
                 }
 
                 TransactionType.TRADE -> {
-                    buildTrade(rate = rate, account = account, occurredOn = occurredOn, request = request)
+                    buildTrade(
+                        rate = resolveExchangeRate(request.exchangeRate, account),
+                        account = account,
+                        occurredOn = occurredOn,
+                        request = request,
+                    )
                 }
 
                 TransactionType.ADJUSTMENT -> {
@@ -299,7 +303,6 @@ class TransactionServiceImpl(
 
     private fun buildTransfer(
         amount: BigDecimal,
-        rate: BigDecimal,
         account: Account,
         occurredOn: LocalDate,
         request: CreateTransactionRequest,
@@ -319,6 +322,14 @@ class TransactionServiceImpl(
         rejectTradeFields(request.ticker, request.quantity, request.unitPrice, request.tradeSide)
         val toAccount = accountService.getOwnedBy(toAccountId, owner)
         val toAmount = resolveToAmount(request.toAmount, account, toAccount)
+        val rate =
+            resolveTransferRate(
+                exchangeRate = request.exchangeRate,
+                amount = amount,
+                account = account,
+                toAccount = toAccount,
+                toAmount = toAmount,
+            )
         return Transaction(
             type = TransactionType.TRANSFER,
             amount = amount,
@@ -553,6 +564,40 @@ class TransactionServiceImpl(
             account.currency,
         )
 
+    /**
+     * A transfer's rate may be left out: its KZT value reaches no total, only
+     * the list and the export, so asking for it was asking for nothing. Into
+     * a KZT account the two sides already say what the money was worth;
+     * otherwise the source currency's latest market rate stands in. With
+     * neither, it is still required.
+     */
+    private fun resolveTransferRate(
+        exchangeRate: BigDecimal?,
+        amount: BigDecimal,
+        account: Account,
+        toAccount: Account,
+        toAmount: BigDecimal?,
+    ): BigDecimal =
+        when {
+            exchangeRate != null || account.currency == BASE_CURRENCY -> {
+                resolveExchangeRate(exchangeRate, account)
+            }
+
+            toAccount.currency == BASE_CURRENCY -> {
+                checkNotNull(toAmount) { "a cross-currency TRANSFER has a toAmount" }
+                    .divide(amount, RATE_SCALE, RoundingMode.HALF_UP)
+            }
+
+            else -> {
+                marketDataService.rates().firstOrNull { it.symbol == account.currency }?.price
+                    ?: throw invalidField(
+                        "exchangeRate",
+                        "is required: there is no market rate for ${account.currency} yet, " +
+                            "so give the $BASE_CURRENCY value of 1 ${account.currency}",
+                    )
+            }
+        }
+
     private fun validateExchangeRate(
         exchangeRate: BigDecimal,
         currency: String,
@@ -567,6 +612,9 @@ class TransactionServiceImpl(
 
 private const val APPLY = 1
 private const val REVERSE = -1
+
+/** As stored: `exchange_rate` is `NUMERIC(19, 6)`. */
+private const val RATE_SCALE = 6
 
 /**
  * Moves the balances this transaction touches. [direction] is [APPLY] to book

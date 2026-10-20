@@ -148,6 +148,15 @@ from today. For US stocks that is Tuesday to Saturday, not Monday to Friday —
 Friday's close lands at about 02:00 Saturday Almaty time, so skipping
 Saturday would have hidden it until Monday. Coins and rates stay daily.
 
+**A transfer's rate is optional and filled in, not left empty** (2026-10-20,
+the owner's choice). A transfer's `amountKzt` reaches no total, so asking for
+a rate on USD→USD was asking for nothing. Leaving it null was the honest
+alternative, but it meant a migration and nullable API fields for a figure
+only the list and the export show. So into KZT the rate is `toAmount /
+amount`, and otherwise the latest `market_quotes` rate — today's, not the
+transfer date's, since no rate history is kept. A PATCH of `toAmount` does
+not re-derive a rate that was derived; the stored one stays.
+
 ## Serialization and formatting
 
 **Money serializes as a JSON number with trailing scale digits**

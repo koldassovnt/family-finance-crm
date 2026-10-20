@@ -5,6 +5,8 @@ import com.familyfinance.crm.category
 import com.familyfinance.crm.domain.Account
 import com.familyfinance.crm.domain.AccountType
 import com.familyfinance.crm.domain.CategoryKind
+import com.familyfinance.crm.domain.MarketQuote
+import com.familyfinance.crm.domain.QuoteKind
 import com.familyfinance.crm.domain.ShareAccess
 import com.familyfinance.crm.domain.TradeSide
 import com.familyfinance.crm.domain.Transaction
@@ -28,6 +30,7 @@ import io.mockk.verify
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import java.math.BigDecimal
+import java.time.Instant
 import java.time.LocalDate
 import java.util.Optional
 import java.util.UUID
@@ -40,6 +43,7 @@ class TransactionServiceImplTest {
     private val accountService = mockk<AccountService>()
     private val categoryService = mockk<CategoryService>()
     private val topicService = mockk<TopicService>()
+    private val marketDataService = mockk<MarketDataService>()
     private val today = LocalDate.of(2026, 9, 10)
     private val service =
         TransactionServiceImpl(
@@ -47,6 +51,7 @@ class TransactionServiceImplTest {
             accountService = accountService,
             categoryService = categoryService,
             topicService = topicService,
+            marketDataService = marketDataService,
             clock = fixedClock(today),
         )
 
@@ -115,6 +120,81 @@ class TransactionServiceImplTest {
 
         assertEquals(BigDecimal("400"), source.balance)
         assertEquals(BigDecimal("48000"), destination.balance)
+    }
+
+    @Test
+    fun `a transfer between two dollar accounts takes the latest market rate when none is given`() {
+        val source = account(owner, balance = "500", currency = "USD")
+        val destination = account(owner, currency = "USD")
+        every { accountService.getOwnedBy(source.idValue, owner) } returns source
+        every { accountService.getOwnedBy(destination.idValue, owner) } returns destination
+        every { marketDataService.rates() } returns listOf(usdRate("512.5"))
+
+        val transaction =
+            service.create(owner, request(TransactionType.TRANSFER, "100", source.idValue, toAccountId = destination.id))
+
+        assertEquals(BigDecimal("512.5") to BigDecimal("51250.0000"), transaction.exchangeRate to transaction.amountKzt)
+    }
+
+    @Test
+    fun `a transfer between two dollar accounts without a rate is rejected when no market rate is stored`() {
+        val source = account(owner, currency = "USD")
+        val destination = account(owner, currency = "USD")
+        every { accountService.getOwnedBy(source.idValue, owner) } returns source
+        every { accountService.getOwnedBy(destination.idValue, owner) } returns destination
+        every { marketDataService.rates() } returns emptyList()
+
+        val error =
+            assertThrows<ValidationException> {
+                service.create(owner, request(TransactionType.TRANSFER, "100", source.idValue, toAccountId = destination.id))
+            }
+
+        assertEquals(setOf("exchangeRate"), error.fieldErrors.keys)
+    }
+
+    @Test
+    fun `a transfer into a KZT account without a rate takes the one its two amounts imply`() {
+        val source = account(owner, balance = "500", currency = "USD")
+        val destination = account(owner, currency = "KZT")
+        every { accountService.getOwnedBy(source.idValue, owner) } returns source
+        every { accountService.getOwnedBy(destination.idValue, owner) } returns destination
+
+        val transaction =
+            service.create(
+                owner,
+                request(
+                    TransactionType.TRANSFER,
+                    "100",
+                    source.idValue,
+                    toAccountId = destination.id,
+                    toAmount = BigDecimal("48035"),
+                ),
+            )
+
+        assertEquals(BigDecimal("480.350000"), transaction.exchangeRate)
+    }
+
+    @Test
+    fun `a rate given on a transfer is kept rather than the market one`() {
+        val source = account(owner, balance = "500", currency = "USD")
+        val destination = account(owner, currency = "USD")
+        every { accountService.getOwnedBy(source.idValue, owner) } returns source
+        every { accountService.getOwnedBy(destination.idValue, owner) } returns destination
+
+        val transaction =
+            service.create(
+                owner,
+                request(
+                    TransactionType.TRANSFER,
+                    "100",
+                    source.idValue,
+                    toAccountId = destination.id,
+                    exchangeRate = BigDecimal("480"),
+                ),
+            )
+
+        assertEquals(BigDecimal("480"), transaction.exchangeRate)
+        verify(exactly = 0) { marketDataService.rates() }
     }
 
     @Test
@@ -780,4 +860,13 @@ class TransactionServiceImplTest {
         occurredOn = occurredOn,
         exchangeRate = exchangeRate,
     )
+
+    private fun usdRate(price: String) =
+        MarketQuote(
+            kind = QuoteKind.CURRENCY,
+            symbol = "USD",
+            price = BigDecimal(price),
+            currency = "KZT",
+            fetchedAt = Instant.parse("2026-09-10T03:00:00Z"),
+        )
 }

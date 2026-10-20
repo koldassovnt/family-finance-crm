@@ -48,7 +48,7 @@ Phase 0/1 code actually existed when the build started. See
 | DELETE | `/api/v1/categories/{id}`               | soft delete; blocked only if an active `Budget` references it — historical transactions do **not** block it |
 | GET    | `/api/v1/banks`                         | list banks                                                          |
 | POST   | `/api/v1/banks`                         | find-or-create by name                                              |
-| POST   | `/api/v1/transactions`                  | record a transaction; `exchangeRate` required for a non-KZT account |
+| POST   | `/api/v1/transactions`                  | record a transaction; `exchangeRate` required for a non-KZT account, except on a `TRANSFER` (see `00-`) |
 | GET    | `/api/v1/accounts/{id}/transactions`    | account history; `from`/`to` **required**, range capped at 1 year — no paging (see below) |
 | GET    | `/api/v1/transactions/summary`          | monthly summary (`month=2026-09`)                                   |
 | PATCH  | `/api/v1/transactions/{id}`             | edit amount/date/category/note only — **not** type/account/toAccount (delete + recreate for those); re-applies the balance delta if amount changes |

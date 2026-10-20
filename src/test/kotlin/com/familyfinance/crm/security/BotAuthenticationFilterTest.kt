@@ -14,6 +14,7 @@ import org.springframework.mock.web.MockFilterChain
 import org.springframework.mock.web.MockHttpServletRequest
 import org.springframework.mock.web.MockHttpServletResponse
 import org.springframework.security.core.context.SecurityContextHolder
+import java.util.UUID
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
@@ -36,8 +37,9 @@ class BotAuthenticationFilterTest {
         path: String,
         botToken: String? = "bot-secret",
         telegramUserId: String? = null,
+        method: String = "GET",
     ): Pair<MockHttpServletResponse, MockFilterChain> {
-        val request = MockHttpServletRequest("GET", path).apply { requestURI = path }
+        val request = MockHttpServletRequest(method, path).apply { requestURI = path }
         botToken?.let { request.addHeader(BOT_TOKEN_HEADER, it) }
         telegramUserId?.let { request.addHeader(TELEGRAM_USER_ID_HEADER, it) }
         val response = MockHttpServletResponse()
@@ -113,6 +115,40 @@ class BotAuthenticationFilterTest {
         val (response, _) = run("/api/v1/bills")
 
         assertTrue(response.contentAsString.contains("TELEGRAM_NOT_LINKED"))
+    }
+
+    @Test
+    fun `lets the bot list a linked user's topics`() {
+        every { userService.findByTelegramUserId(123) } returns user()
+
+        val (_, chain) = run("/api/v1/topics", telegramUserId = "123")
+
+        assertNotNull(chain.request)
+    }
+
+    @Test
+    fun `keeps the bot away from a topic's own endpoints`() {
+        val (response, chain) = run("/api/v1/topics/${UUID.randomUUID()}/transactions", telegramUserId = "123")
+
+        assertEquals(403, response.status)
+        assertNull(chain.request)
+    }
+
+    @Test
+    fun `lets the bot read the stored exchange rates`() {
+        every { userService.findByTelegramUserId(123) } returns user()
+
+        val (_, chain) = run("/api/v1/market-data/rates", telegramUserId = "123")
+
+        assertNotNull(chain.request)
+    }
+
+    @Test
+    fun `does not let the bot start a market data refresh`() {
+        val (response, chain) = run("/api/v1/market-data/refresh", telegramUserId = "123", method = "POST")
+
+        assertEquals(403, response.status)
+        assertNull(chain.request)
     }
 
     @Test

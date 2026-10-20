@@ -46,6 +46,10 @@ private val ON_BEHALF_PATHS: RequestMatcher =
                 "/api/v1/bills/**",
                 "/api/v1/planned-purchases",
                 "/api/v1/planned-purchases/**",
+                // The topics to file a transaction under, and the stored rate
+                // to offer — not a topic's own endpoints, nor a refresh.
+                "/api/v1/topics",
+                "/api/v1/market-data/rates",
             ).map { paths.matcher(it) },
         )
     }

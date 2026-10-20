@@ -113,6 +113,13 @@ Implications, so nothing gets missed when this is built:
   together. The rate is required when the account is not in KZT and must be
   absent or `1` when it is. A rate can be corrected via `PATCH`, which
   re-derives `amountKzt`.
+  - **Except on a `TRANSFER`** (the owner's choice, 2026-10-20), whose
+    `amountKzt` reaches no total. Left out, the rate is `toAmount / amount`
+    when the money lands in a KZT account, and otherwise the source
+    currency's latest stored market rate (Phase 5's `market_quotes`) — so a
+    USD→USD transfer needs none. That rate is the latest one, not the
+    transfer date's, which is fine for a figure that is only displayed. With
+    no stored rate either, it is still required.
   - Converting a *balance* would need a current rate, which is deliberately
     not stored — so `GET /accounts` shows each balance in its own currency
     with no combined total, and `Goal.targetAmount` is denominated in its
@@ -136,7 +143,10 @@ Implications, so nothing gets missed when this is built:
   `bills-due`) the bot speaks for itself, and no person's JWT is accepted
   there. Elsewhere it adds `X-Telegram-User-Id` and acts as that linked user,
   with exactly their rights, **only on transactions, accounts, categories,
-  bills and planned purchases** — a leaked bot token cannot reach sharing,
+  bills and planned purchases**, plus `/api/v1/topics` itself (list and
+  create, not a topic's own endpoints) and `/api/v1/market-data/rates`
+  (added 2026-10-20: the topic to file a transaction under, and the rate to
+  offer) — a leaked bot token cannot reach sharing,
   users or anything else. An unknown or missing id is a 403
   `TELEGRAM_NOT_LINKED`, so the bot can answer "send /start". The 10:00
   reminder is the bot's own cron reading `GET /api/v1/bot/bills-due?date=`:

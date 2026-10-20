@@ -25,7 +25,9 @@ data class CreateTransactionRequest(
     val toAmount: BigDecimal? = null,
     /**
      * KZT per 1 unit of the account's currency. Required when the account is
-     * not in KZT, and must be absent or 1 when it is.
+     * not in KZT, and must be absent or 1 when it is. Optional on a
+     * `TRANSFER`: left out, it is `toAmount / amount` into a KZT account, and
+     * otherwise the latest market rate of the source currency.
      */
     val exchangeRate: BigDecimal? = null,
     val categoryId: UUID? = null,

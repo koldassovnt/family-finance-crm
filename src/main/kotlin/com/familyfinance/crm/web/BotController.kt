@@ -29,7 +29,8 @@ import java.time.LocalDate
     name = "Telegram bot",
     description =
         "Only for the bot, authenticated by X-Bot-Token. Elsewhere it acts for a linked user by adding " +
-            "X-Telegram-User-Id, on transactions, accounts, categories, bills and planned purchases only.",
+            "X-Telegram-User-Id, on transactions, accounts, categories, bills and planned purchases, " +
+            "plus the topic list and the stored exchange rates.",
 )
 class BotController(
     private val userService: UserService,
