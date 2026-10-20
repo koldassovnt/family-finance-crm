@@ -250,6 +250,10 @@ site, since 2026-10-13.
   replaces a price taken earlier that day with the close. The 08:00 run, the
   run after startup and `POST /market-data/refresh` also ask KASE, but only
   for a ticker with no quote from today.
+- **Not at the weekend** (the owner's choice, 2026-10-20): KASE trades Monday
+  to Friday, so on Saturday and Sunday a ticker with a quote from Friday or
+  later is not asked for, by any run — the 18:30 one included. A ticker with
+  none still is.
 - **No cap and no usage row:** there is no quota to protect, and it is one
   call per ticker held.
 - **Works without `API_NINJAS_KEY`.** `configured` in the refresh answer still
@@ -287,6 +291,15 @@ A symbol already fetched **today** is not asked for again (`upToDate` in the
 refresh answer): the source moves once a day, so a second ask buys the same
 answer. A symbol that failed has no quote from today, so it is retried on each
 refresh, within the cap.
+
+**US stocks follow their market** (the owner's choice, 2026-10-20). Wall
+Street closes at 01:00–02:00 Almaty time, so each weekday's close is there the
+next morning, Tuesday to Saturday. On Sunday and Monday a stock with a quote
+from Saturday or later is `upToDate` and costs no call; one last fetched on
+Friday (Saturday's fetch failed or the app was down) is still asked for.
+Coins trade every day and rates are kept daily, so both are asked for every
+day as before. Exchange holidays are not known: one costs a call that repeats
+the last close.
 
 API Ninjas' own free-plan limits are 3,000 requests a month and 100 an hour;
 90 a day at most is 2,700 a month.

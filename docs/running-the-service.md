@@ -116,8 +116,10 @@ Each person then sets their Telegram username on their profile and sends
 `/start` to the bot.
 
 **Stocks in a KZT broker account** are priced from `kase.kz` instead, with no
-key and nothing to set up: at 18:30 Almaty time every day, and on the same
-manual refresh. It needs outbound HTTPS to `kase.kz`. If that site is down or
+key and nothing to set up: at 18:30 Almaty time on weekdays, and on the same
+manual refresh. US stocks are not re-fetched on Sunday and Monday, nor KASE
+ones at the weekend, since their markets have not traded since the last fetch
+([market-data-schedule.md](market-data-schedule.md) has the full schedule). It needs outbound HTTPS to `kase.kz`. If that site is down or
 changes, those holdings keep their last price and nothing else is affected;
 the app log has a `No STOCK quote for ...` warning per ticker.
 

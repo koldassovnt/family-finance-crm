@@ -140,6 +140,14 @@ tickers and KZT-quoted coins all returned 400 with a real key; asking daily
 would spend the cap on a known answer. If a provider that covers KASE is ever
 added, this filter in `MarketDataServiceImpl` is the thing to revisit.
 
+**Stocks are not re-fetched while their market is shut** (2026-10-20, the
+owner's choice of "follow each market" over "weekdays only"). The rule is in
+the service, not the crons, so the startup and manual refreshes keep it too:
+a quote counts as current from the market's last trading morning, not just
+from today. For US stocks that is Tuesday to Saturday, not Monday to Friday —
+Friday's close lands at about 02:00 Saturday Almaty time, so skipping
+Saturday would have hidden it until Monday. Coins and rates stay daily.
+
 ## Serialization and formatting
 
 **Money serializes as a JSON number with trailing scale digits**

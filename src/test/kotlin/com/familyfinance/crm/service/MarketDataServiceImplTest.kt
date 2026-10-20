@@ -285,6 +285,85 @@ class MarketDataServiceImplTest {
     }
 
     @Test
+    fun `the after-close run on a Saturday keeps a KASE price from Friday`() {
+        every { transactionRepository.findAllTrades() } returns listOf(opening(AccountType.BROKER, "HSBK", currency = "KZT"))
+        every { quoteRepository.findAllByKindOrderBySymbol(QuoteKind.STOCK) } returns
+            listOf(kaseQuote("HSBK", fetchedAt = "2026-10-16T13:30:00Z"))
+
+        val report = service(on = SATURDAY).refreshLocalExchange()
+
+        assertEquals(1, report.upToDate)
+        verify(exactly = 0) { kaseClient.security(any()) }
+    }
+
+    @Test
+    fun `an ordinary refresh on a Sunday does not ask KASE for a ticker fetched on Friday`() {
+        every { transactionRepository.findAllTrades() } returns listOf(opening(AccountType.BROKER, "HSBK", currency = "KZT"))
+        every { quoteRepository.findAllByKindOrderBySymbol(QuoteKind.STOCK) } returns
+            listOf(kaseQuote("HSBK", fetchedAt = "2026-10-16T13:30:00Z"))
+
+        service(on = SUNDAY).refresh()
+
+        verify(exactly = 0) { kaseClient.security(any()) }
+    }
+
+    @Test
+    fun `on a Saturday a US stock fetched on Friday is fetched again, for Friday's close`() {
+        every { transactionRepository.findAllTrades() } returns listOf(opening(AccountType.BROKER, "VOO.US"))
+        every { quoteRepository.findAllByKindOrderBySymbol(QuoteKind.STOCK) } returns
+            listOf(usQuote("VOO.US", fetchedAt = "2026-10-16T03:00:00Z"))
+        every { client.stockPrice("VOO") } returns StockPriceQuote(price = BigDecimal("600"), currency = "USD")
+
+        service(on = SATURDAY).refresh()
+
+        verify(exactly = 1) { client.stockPrice("VOO") }
+    }
+
+    @Test
+    fun `on a Monday a US stock fetched on Saturday is not asked for again`() {
+        every { transactionRepository.findAllTrades() } returns listOf(opening(AccountType.BROKER, "VOO.US"))
+        every { quoteRepository.findAllByKindOrderBySymbol(QuoteKind.STOCK) } returns
+            listOf(usQuote("VOO.US", fetchedAt = "2026-10-17T03:00:00Z"))
+
+        val report = service(on = MONDAY).refresh()
+
+        assertEquals(1, report.upToDate)
+        verify(exactly = 0) { client.stockPrice(any()) }
+    }
+
+    @Test
+    fun `on a Monday a US stock last fetched on Friday is fetched, since Saturday's fetch was missed`() {
+        every { transactionRepository.findAllTrades() } returns listOf(opening(AccountType.BROKER, "VOO.US"))
+        every { quoteRepository.findAllByKindOrderBySymbol(QuoteKind.STOCK) } returns
+            listOf(usQuote("VOO.US", fetchedAt = "2026-10-16T03:00:00Z"))
+        every { client.stockPrice("VOO") } returns StockPriceQuote(price = BigDecimal("600"), currency = "USD")
+
+        service(on = MONDAY).refresh()
+
+        verify(exactly = 1) { client.stockPrice("VOO") }
+    }
+
+    @Test
+    fun `a coin is still fetched on a Sunday`() {
+        every { transactionRepository.findAllTrades() } returns listOf(opening(AccountType.CRYPTO, "BTC/USD"))
+        every { quoteRepository.findAllByKindOrderBySymbol(QuoteKind.CRYPTO) } returns
+            listOf(
+                MarketQuote(
+                    kind = QuoteKind.CRYPTO,
+                    symbol = "BTC/USD",
+                    price = BigDecimal("61000"),
+                    currency = "USD",
+                    fetchedAt = Instant.parse("2026-10-17T03:00:00Z"),
+                ),
+            )
+        every { client.cryptoPrice("BTCUSDT") } returns CryptoPriceQuote(BigDecimal("61000.5"))
+
+        service(on = SUNDAY).refresh()
+
+        verify(exactly = 1) { client.cryptoPrice("BTCUSDT") }
+    }
+
+    @Test
     fun `a failed call keeps the previous quote and still counts against the cap`() {
         every { accountRepository.findActiveCurrencies() } returns listOf("USD")
         every { client.exchangeRate(any()) } throws mockk<FeignException>(relaxed = true)
@@ -368,6 +447,7 @@ class MarketDataServiceImplTest {
     private fun service(
         apiKey: String = "key",
         dailyLimit: Int = 30,
+        on: LocalDate = today,
     ) = MarketDataServiceImpl(
         client = client,
         kaseClient = kaseClient,
@@ -381,7 +461,19 @@ class MarketDataServiceImplTest {
                 jwt = AppProperties.JwtProperties(secret = "0123456789abcdef0123456789abcdef", expiryDays = 30),
                 marketData = AppProperties.MarketDataProperties(apiKey = apiKey, dailyLimit = dailyLimit),
             ),
-        clock = fixedClock(today),
+        clock = fixedClock(on),
+    )
+
+    private fun usQuote(
+        ticker: String,
+        fetchedAt: String,
+    ) = MarketQuote(
+        kind = QuoteKind.STOCK,
+        symbol = ticker,
+        price = BigDecimal("590"),
+        currency = "USD",
+        fetchedAt = Instant.parse(fetchedAt),
+        exchange = "AMEX",
     )
 
     private fun kaseQuote(
@@ -413,3 +505,7 @@ class MarketDataServiceImplTest {
  * API while the first is still mid-call; a guarded one just waits it out.
  */
 private const val SECOND_REFRESH_HEAD_START_MS = 300L
+
+private val SATURDAY = LocalDate.of(2026, 10, 17)
+private val SUNDAY = LocalDate.of(2026, 10, 18)
+private val MONDAY = LocalDate.of(2026, 10, 19)

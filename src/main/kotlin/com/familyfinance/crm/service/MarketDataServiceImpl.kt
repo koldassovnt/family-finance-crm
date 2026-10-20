@@ -18,6 +18,7 @@ import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import java.math.BigDecimal
 import java.time.Clock
+import java.time.DayOfWeek
 import java.time.Instant
 import java.time.LocalDate
 import java.util.concurrent.locks.ReentrantLock
@@ -91,7 +92,8 @@ class MarketDataServiceImpl(
      * Stocks held in a KZT account are priced by KASE itself. No key and no
      * quota, so no cap; the once-a-day rule still applies, except to the run
      * [afterClose], which exists to replace whatever was fetched earlier in
-     * the day with the closing price.
+     * the day with the closing price. KASE does not trade at the weekend, so
+     * then a price from Friday on is kept, after the close too.
      *
      * KASE's endpoint is undocumented and may vanish: every ticker fails on
      * its own, and a failure only leaves the holding with its previous price.
@@ -102,8 +104,10 @@ class MarketDataServiceImpl(
     ): List<Outcome> {
         val known = quoteRepository.findAllByKindOrderBySymbol(QuoteKind.STOCK).associateBy { it.symbol }
         val today = LocalDate.now(clock)
+        val replaceToday = afterClose && today.dayOfWeek in KASE_TRADING_DAYS
+        val currentSince = lastOf(KASE_TRADING_DAYS, onOrBefore = today)
         return holdings.localExchangeTickers().map { ticker ->
-            if (!afterClose && known[ticker].isFrom(today)) {
+            if (!replaceToday && known[ticker].isFromOrAfter(currentSince)) {
                 Outcome.UP_TO_DATE
             } else {
                 fetchAndStore(QuoteKind.STOCK, ticker, known[ticker]) { fetchFromKase(ticker) }
@@ -124,13 +128,20 @@ class MarketDataServiceImpl(
         val known = quoteRepository.findAllByKindOrderBySymbol(kind).associateBy { it.symbol }
         val today = LocalDate.now(clock)
         val usage = usageRepository.findByKindAndDay(kind, today) ?: MarketDataUsage(kind = kind, day = today, calls = 0)
+        val currentSince =
+            when (kind) {
+                QuoteKind.STOCK -> lastOf(US_CLOSE_MORNINGS, onOrBefore = today)
+
+                // Coins trade every day; rates are asked daily by the owner's choice.
+                QuoteKind.CURRENCY, QuoteKind.CRYPTO -> today
+            }
         // Never fetched first, then stalest: when there are more symbols than
         // the cap allows, tomorrow's refresh picks up where today's stopped.
         return symbols
             .sortedBy { known[it]?.fetchedAt ?: Instant.MIN }
             .map { symbol ->
-                if (known[symbol].isFrom(today)) {
-                    // The source moves once a day, so a second ask today buys the same answer.
+                if (known[symbol].isFromOrAfter(currentSince)) {
+                    // The source moves at most once a day, so asking again buys the same answer.
                     Outcome.UP_TO_DATE
                 } else if (usage.calls >= properties.marketData.dailyLimit) {
                     Outcome.OVER_BUDGET
@@ -143,7 +154,7 @@ class MarketDataServiceImpl(
             }
     }
 
-    private fun MarketQuote?.isFrom(day: LocalDate): Boolean = this != null && LocalDate.ofInstant(fetchedAt, clock.zone) == day
+    private fun MarketQuote?.isFromOrAfter(day: LocalDate): Boolean = this != null && LocalDate.ofInstant(fetchedAt, clock.zone) >= day
 
     private fun fetchAndStore(
         kind: QuoteKind,
@@ -223,6 +234,27 @@ private fun List<Holding>.tickersOf(kind: QuoteKind): Set<String> =
 /** What KASE is asked for instead: the stocks, never the coins, of a KZT account. */
 private fun List<Holding>.localExchangeTickers(): List<String> =
     filter { it.quoteKind == QuoteKind.STOCK && isBaseCurrency(it.currency) }.map { it.ticker }.distinct().sorted()
+
+/**
+ * The last day on or before [onOrBefore] that falls on one of [days]: a quote
+ * fetched since then is still current, because the market has not traded since.
+ * Holidays are not known, so one costs a call that repeats the price.
+ */
+private fun lastOf(
+    days: Set<DayOfWeek>,
+    onOrBefore: LocalDate,
+): LocalDate = generateSequence(onOrBefore) { it.minusDays(1) }.first { it.dayOfWeek in days }
+
+/**
+ * Almaty mornings that bring a new US close. Wall Street closes at 01:00 or
+ * 02:00 here, so each weekday's close is there the next morning: Saturday's
+ * fetch has Friday's, and Sunday's or Monday's would only repeat it.
+ */
+private val US_CLOSE_MORNINGS =
+    setOf(DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY, DayOfWeek.THURSDAY, DayOfWeek.FRIDAY, DayOfWeek.SATURDAY)
+
+private val KASE_TRADING_DAYS =
+    setOf(DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY, DayOfWeek.THURSDAY, DayOfWeek.FRIDAY)
 
 private const val MAX_EXCHANGE_LENGTH = 32
 private const val KASE = "KASE"
