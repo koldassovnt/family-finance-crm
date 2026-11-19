@@ -86,10 +86,13 @@ at the time (`amountKzt`).
   `BROKER` in every respect.
 - Account currencies stay three letters, so a crypto account holding a
   stablecoin is recorded as `USD`.
-- **The owner wants a broker account's operation form to offer only Transfer
-  and Trade.** That is a frontend rule. The backend still accepts `INCOME` and
-  `EXPENSE` on these accounts, so a dividend or a broker fee can be recorded
-  if that is ever wanted, and `reconcile` works as on any account.
+- A broker or crypto account's operation form offers Income, Expense,
+  Transfer and Trade. A dividend is an `INCOME` on the account it lands in,
+  and a broker fee is an `EXPENSE` there, each with a category the owner
+  creates (the backend seeds none). A fee stays a separate transaction, not a
+  field on the `TRADE`, so it does not enter a holding's average price.
+  (Until 2026-11-19 the form offered only Transfer and Trade; the backend
+  always accepted both types here.) `reconcile` works as on any account.
 
 ### The three sides
 
